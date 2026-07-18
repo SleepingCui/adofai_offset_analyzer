@@ -128,10 +128,6 @@ function renderDistributionChart() {
             <div class="value" style="color: #ffffff;">${globalStdDev.toFixed(2)} ms</div>
         </div>
         <div class="dist-stat-item">
-            <div class="label">变异系数 (CV)</div>
-            <div class="value" style="color: #ffffff;">${globalAvg !== 0 ? Math.abs(globalStdDev / globalAvg * 100).toFixed(1) : 'N/A'}%</div>
-        </div>
-        <div class="dist-stat-item">
             <div class="label">偏度</div>
             <div class="value" style="color: #ffffff;" id="skewnessValue">-</div>
         </div>
