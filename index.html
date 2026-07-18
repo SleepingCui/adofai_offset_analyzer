@@ -5,690 +5,269 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ADOFAI Offset Analyzer</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.2.0/dist/chartjs-plugin-zoom.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+    
     <style>
         :root {
-    --bg-color: #f8f9fa;
-    --panel-bg: #ffffff;
-    --accent-blue: #2563eb;
-    --accent-green: #16a34a;
-    --accent-pink: #db2777;
-    --text-primary: #1e293b;
-    --text-secondary: #64748b;
-    --border-color: #e2e8f0;
-    --shadow: 0 1px 3px rgba(0,0,0,0.06);
-}
+            --bg-color: #121212;
+            --panel-color: #1e1e1e;
+            --card-color: #252525;
+            --text-color: #ffffff;
+            --accent-color: #4caf50;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            width: 95%;
+            max-width: 1400px;
+            background: var(--panel-color);
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+        }
+        .header-panel {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            gap: 15px;
+            border-bottom: 1px solid #333;
+            padding-bottom: 15px;
+        }
+        .button-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .file-input-wrapper {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+        }
+        .btn {
+            background-color: var(--accent-color);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            border: none;
+            transition: background 0.2s;
+            font-size: 14px;
+            line-height: 1.4;
+            white-space: nowrap;
+        }
+        .btn:hover { background-color: #45a049; }
+        .btn-reset { background-color: #2196F3; }
+        .btn-reset:hover { background-color: #0b7dda; }
+        input[type="file"] {
+            position: absolute;
+            font-size: 100px;
+            opacity: 0;
+            right: 0;
+            top: 0;
+            cursor: pointer;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        .stats-card {
+            background: var(--card-color);
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #555;
+        }
+        .stats-card h3 { margin: 0 0 5px 0; font-size: 0.85rem; color: #aaa; text-transform: uppercase; }
+        .stats-card .value { font-size: 1.6rem; font-weight: bold; margin-bottom: 5px; }
+        .stats-card .sub-value { font-size: 0.75rem; color: #888; }
 
-* {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-}
+        .margin-counts-box {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+            margin-bottom: 25px;
+            padding: 5px 15px;
+        }
+        .numbers-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 25px;
+        }
+        .pure-number {
+            font-size: 1.8rem;
+            font-weight: 800;
+            font-family: "Courier New", Courier, monospace, sans-serif;
+            line-height: 1;
+            transition: opacity 0.2s;
+        }
+        .xacc-display {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #60FF4E;
+            font-family: sans-serif;
+        }
 
-body {
-    background-color: var(--bg-color);
-    color: var(--text-primary);
-    padding: 2rem 1rem;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-}
-
-.container {
-    width: 100%;
-    max-width: 1200px;
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-}
-
-header {
-    text-align: center;
-    margin-bottom: 0.5rem;
-}
-
-header h1 {
-    font-size: 1.75rem;
-    font-weight: 600;
-    color: var(--text-primary);
-    letter-spacing: -0.02em;
-}
-
-header p {
-    color: var(--text-secondary);
-    font-size: 0.9rem;
-}
-
-
-.upload-section {
-    background-color: var(--panel-bg);
-    border: 2px dashed var(--border-color);
-    border-radius: 8px;
-    padding: 2.5rem 1.5rem;
-    text-align: center;
-    cursor: pointer;
-    transition: border-color 0.2s;
-}
-
-.upload-section:hover,
-.upload-section.dragover {
-    border-color: var(--accent-blue);
-}
-
-.upload-section input[type="file"] {
-    display: none;
-}
-
-.upload-icon {
-    font-size: 2.5rem;
-    margin-bottom: 0.75rem;
-}
-
-.upload-text {
-    font-weight: 500;
-    margin-bottom: 0.25rem;
-}
-
-.upload-subtext {
-    color: var(--text-secondary);
-    font-size: 0.85rem;
-}
-
-
-.dashboard {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-    width: 100%;
-}
-
-.panel {
-    background-color: var(--panel-bg);
-    border-radius: 8px;
-    padding: 1.5rem;
-    border: 1px solid var(--border-color);
-    box-shadow: var(--shadow);
-}
-
-.panel-title {
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--text-primary);
-    margin-bottom: 1rem;
-    border-bottom: 1px solid var(--border-color);
-    padding-bottom: 0.5rem;
-}
-
-/
-.meta-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 0.75rem;
-    margin-bottom: 1.5rem;
-}
-
-@media (min-width: 768px) {
-    .meta-grid {
-        grid-template-columns: repeat(2, 1fr);
-    }
-}
-
-@media (min-width: 1024px) {
-    .meta-grid {
-        grid-template-columns: repeat(4, 1fr);
-    }
-}
-
-.info-item {
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-    padding: 0.5rem 0.75rem;
-    background-color: #f1f5f9;
-    border-radius: 6px;
-}
-
-.info-label {
-    font-size: 0.7rem;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-}
-
-.info-value {
-    font-size: 0.9rem;
-    font-weight: 500;
-    word-break: break-all;
-}
-
-
-.stats-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 0.75rem;
-}
-
-@media (min-width: 768px) {
-    .stats-grid {
-        grid-template-columns: repeat(4, 1fr);
-    }
-}
-
-.stat-card {
-    background-color: #f8fafc;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    padding: 0.75rem 1rem;
-}
-
-.stat-label {
-    font-size: 0.7rem;
-    color: var(--text-secondary);
-    font-weight: 500;
-    margin-bottom: 0.2rem;
-}
-
-.stat-value {
-    font-size: 1.1rem;
-    font-weight: 600;
-}
-
-.stat-value.green { color: var(--accent-green); }
-.stat-value.pink { color: var(--accent-pink); }
-
-.control-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 1.5rem;
-    margin-bottom: 1rem;
-    padding: 0.5rem 0;
-    border-bottom: 1px solid var(--border-color);
-}
-
-.control-group {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-}
-
-.control-label {
-    font-size: 0.85rem;
-    color: var(--text-secondary);
-    white-space: nowrap;
-}
-
-.control-slider {
-    -webkit-appearance: none;
-    width: 140px;
-    height: 4px;
-    border-radius: 2px;
-    background: var(--border-color);
-    outline: none;
-    cursor: pointer;
-}
-
-.control-slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    background: var(--accent-blue);
-    cursor: pointer;
-    border: 2px solid white;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
-}
-
-.slider-value {
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-    font-family: monospace;
-    min-width: 60px;
-}
-
-.judge-legend {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 0;
-    margin-bottom: 0.75rem;
-    font-size: 0.8rem;
-}
-
-.judge-badge {
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    padding: 0.15rem 0.5rem;
-    background-color: #f1f5f9;
-    border-radius: 4px;
-    border: 1px solid var(--border-color);
-}
-
-.color-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
-}
-
-.chart-scroll-wrapper {
-    width: 100%;
-    overflow-x: auto;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    background-color: #fafafa;
-}
-
-.chart-container {
-    width: 100%;
-    height: 400px;
-    position: relative;
-    padding: 8px;
-}
-
-.hidden { display: none !important; }
-/
-.judge-legend span[style] {
-    color: var(--text-secondary) !important;
-}
-
+        .charts-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .chart-section {
+            position: relative;
+            width: 100%;
+        }
+        
+        .chart-section h3 {
+            margin: 0 0 10px 0;
+            font-size: 1rem;
+            color: #aaa;
+            text-align: center;
+        }
+        
+        .chart-wrapper {
+            position: relative;
+            width: 100%;
+            height: 500px;
+            background-color: #0a0a0a;
+            border-radius: 8px;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+        
+        .distribution-stats {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 10px;
+            padding: 8px;
+            background: var(--card-color);
+            border-radius: 8px;
+        }
+        .dist-stat-item {
+            flex: 1;
+            min-width: 100px;
+            text-align: center;
+        }
+        .dist-stat-item .label {
+            font-size: 0.7rem;
+            color: #aaa;
+            margin-bottom: 2px;
+        }
+        .dist-stat-item .value {
+            font-size: 1rem;
+            font-weight: bold;
+        }
+        
+        .tip {
+            margin-top: 10px;
+            font-size: 0.85rem;
+            color: #777;
+            text-align: center;
+            padding: 5px 0;
+        }
+        
+        @media (max-width: 1200px) {
+            .charts-container {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .header-panel {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .button-group {
+                flex-direction: column;
+                width: 100%;
+            }
+            .btn {
+                width: 100%;
+                text-align: center;
+            }
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>ADOFAI Offset Analyzer</h1>
-        </header>
 
-        <div class="upload-section" id="drop-zone">
-            <input type="file" id="file-input" accept=".json">
-            <div class="upload-text">拖拽或点击上传JSON</div>
+<div class="container">
+    <div class="header-panel">
+        <div class="button-group">
+            <div class="file-input-wrapper">
+                <button class="btn">导入 JSON</button>
+                <input type="file" id="jsonFile" accept=".json">
+            </div>
+            <button class="btn btn-reset" id="resetZoom">重置缩放</button>
         </div>
-
-   
-        <div class="dashboard hidden" id="results-dashboard">
-      
-            <div class="panel">
-                <div class="panel-title">统计</div>
-                <div class="meta-grid">
-                    <div class="info-item">
-                        <div class="info-label">歌曲名称</div>
-                        <div class="info-value" id="meta-song-name">-</div>
-                    </div>
-                    <div class="info-item">
-                        <div class="info-label">谱面文件路径</div>
-                        <div class="info-value" id="meta-level-path" style="font-family: monospace; font-size: 0.8rem; color: var(--text-secondary);">-</div>
-                    </div>
-                    <div class="info-item">
-                        <div class="info-label">总按键数</div>
-                        <div class="info-value" id="meta-total-notes">-</div>
-                    </div>
-                    <div class="info-item">
-                        <div class="info-label">生成时间</div>
-                        <div class="info-value" id="meta-timestamp">-</div>
-                    </div>
-                </div>
-
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <div class="stat-label" >平均偏移 (Avg)</div>
-                        <div class="stat-value" id="stat-avg">-</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-label" >平均绝对偏移 (MAD)</div>
-                        <div class="stat-value" id="stat-abs-avg">-</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-label">Max</div>
-                        <div class="stat-value" id="stat-max">-</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-label">Min</div>
-                        <div class="stat-value" id="stat-min">-</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="panel">
-                <div class="panel-title">分布图</div>
-                <div class="judge-legend" id="judge-legend-container">
-                    loading...
-                </div>
-
-                <div class="judge-legend" style="margin-top: -0.5rem; background-color: transparent; border: none; padding-left: 0;">
-                    <span style="color:#94a3b8; font-size:0.8rem;"></span>
-                    <span style="color:#64748b; font-size:0.8rem; margin-right:1rem;">灰色粗线: 0ms 基准线</span>
-                    <span style="color:#4ade80; font-size:0.8rem; margin-right:1rem;">绿色实线: 平均偏移 (Avg)</span>
-                    <span style="color:#f472b6; font-size:0.8rem;">粉色虚线: 绝对偏差范围 (±MAD)</span>
-                </div>
-
-                <div class="control-row">
-                    <div class="control-group">
-                        <span class="control-label">Spacing:</span>
-                        <input type="range" id="spacing-slider" class="control-slider" min="0" max="40" value="0" step="1">
-                        <span class="slider-value" id="spacing-val">自适应</span>
-                    </div>
-                    <div class="control-group">
-                        <span class="control-label">散点大小:</span>
-                        <input type="range" id="size-slider" class="control-slider" min="1" max="14" value="4" step="1">
-                        <span class="slider-value" id="size-val">4px</span>
-                    </div>
-                </div>
-
-                <div class="chart-scroll-wrapper">
-                    <div class="chart-container" id="chart-container">
-                        <canvas id="scatter-chart"></canvas>
-                    </div>
-                </div>
-            </div>
+        <div id="fileVersion" style="font-size: 0.9rem; font-weight: bold;"></div>
+        <div id="metaInfo" style="font-size: 0.9rem; color: #aaa; text-align: right;">
+            等待导入...
         </div>
     </div>
 
-    <script>
+    <div class="stats-grid">
+        <div class="stats-card" style="border-left-color: #2196F3;">
+            <h3>总按键数</h3>
+            <div class="value" id="statTotal">-</div>
+        </div>
+        <div class="stats-card" style="border-left-color: #ffb74d;">
+            <h3>平均偏差</h3>
+            <div class="value" id="statAvg">-</div>
+        </div>
+    </div>
 
-        const JUDGE_MAP = {
-            0: { name: "TooEarly", color: "#FF0000" },
-            1: { name: "VeryEarly", color: "#FF6F4E" },
-            2: { name: "EarlyPerfect", color: "#A0FF4E" },
-            3: { name: "Perfect", color: "#60FF4E" },
-            4: { name: "LatePerfect", color: "#A0FF4E" },
-            5: { name: "VeryLate", color: "#FF6F4E" },
-            6: { name: "TooLate", color: "#FF0000" },
-            7: { name: "Multipress", color: "#00FFED" },
-            8: { name: "FailMiss", color: "#D958FF" },
-            9: { name: "FailOverload", color: "#D958FF" },
-            10: { name: "Auto", color: "#FFFFFF" },
-            11: { name: "OverPress", color: "#D958FF" }
-        };
 
-        const dropZone = document.getElementById('drop-zone');
-        const fileInput = document.getElementById('file-input');
-        const dashboard = document.getElementById('results-dashboard');
-        const spacingSlider = document.getElementById('spacing-slider');
-        const spacingVal = document.getElementById('spacing-val');
-        const sizeSlider = document.getElementById('size-slider');
-        const sizeVal = document.getElementById('size-val');
-        const chartContainer = document.getElementById('chart-container');
-        const legendContainer = document.getElementById('judge-legend-container');
+
+    <div class="margin-counts-box" id="marginCountsBox">
+        <div class="numbers-group" id="pureNumbersContainer">
+        </div>
+        <div class="xacc-display" id="xaccValue">XACC: -</div>
+    </div>
+
+    <div class="charts-container">
+        <div class="chart-section">
+            <h3>偏移量散点图</h3>
+            <div class="chart-wrapper">
+                <canvas id="scatterChart"></canvas>
+            </div>
+        </div>
         
-        let chartInstance = null;
-        let totalNotesCount = 0;
-
-        const MAX_SAFE_CANVAS_WIDTH = 20000; 
-
-
-        function renderLegend() {
-            legendContainer.innerHTML = '';
-            const renderKeys = [
-                { key: 0, label: "TooEarly / TooLate" },
-                { key: 1, label: "VeryEarly / VeryLate" },
-                { key: 2, label: "Early / Late Perfect" },
-                { key: 3, label: "Perfect" },
-                { key: 7, label: "Multipress" },
-                { key: 8, label: "Fail / Overpress" },
-                { key: 10, label: "Auto" }
-            ];
-            renderKeys.forEach(item => {
-                const config = JUDGE_MAP[item.key];
-                const badge = document.createElement('div');
-                badge.className = 'judge-badge';
-                badge.innerHTML = `<div class="color-dot" style="background-color: ${config.color}"></div><span>${item.label}</span>`;
-                legendContainer.appendChild(badge);
-            });
-        }
-        renderLegend();
-
-        function updateChartWidth() {
-            const spacing = parseInt(spacingSlider.value);
-            if (spacing === 0) {
+        <div class="chart-section">
+            <h3>正态分布图</h3>
+            <div class="distribution-stats" id="distributionStats"></div>
+            <div class="chart-wrapper">
+                <canvas id="distributionChart"></canvas>
+            </div>
+        </div>
+    </div>
     
-                spacingVal.textContent = '(Fit)';
-                chartContainer.style.width = '100%';
-            } else {
-                spacingVal.textContent = spacing + ' px/点';
-                
-          
-                let targetWidth = totalNotesCount * spacing;
+    <div class="tip">
+    提示:直接点击图例可切换显示判定类型<br>
+    <a href="https://github.com/SleepingCui/TimingShow" target="_blank">TimingShow</a> | <a href="https://github.com/SleepingCui/adofai_offset_analyzer" target="_blank">Website source</a>
+</div>
+</div>
 
-                // if (targetWidth > MAX_SAFE_CANVAS_WIDTH) {
-                //     targetWidth = MAX_SAFE_CANVAS_WIDTH;
-                //     const maxAllowedSpacing = (MAX_SAFE_CANVAS_WIDTH / totalNotesCount).toFixed(1);
-                // }
+<script src="app.js"></script>
 
-                chartContainer.style.width = targetWidth + 'px';
-            }
-
-            if (chartInstance) {
-                chartInstance.resize();
-            }
-        }
-
-        spacingSlider.addEventListener('input', updateChartWidth);
-
-        sizeSlider.addEventListener('input', (e) => {
-            sizeVal.textContent = e.target.value + 'px';
-            if (chartInstance) {
-                chartInstance.data.datasets[0].pointRadius = parseInt(e.target.value);
-                chartInstance.data.datasets[0].pointHoverRadius = parseInt(e.target.value) + 2;
-                chartInstance.update('none'); 
-            }
-        });
-
-  
-        dropZone.addEventListener('click', () => fileInput.click());
-        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
-        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-        dropZone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            dropZone.classList.remove('dragover');
-            if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
-        });
-        fileInput.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) handleFile(e.target.files[0]);
-        });
-
-        function handleFile(file) {
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                try {
-                    const data = JSON.parse(e.target.result);
-                    processData(data);
-                } catch (err) {
-                    alert('解析失败，请检查数据完整性。');
-                    console.error(err);
-                }
-            };
-            reader.readAsText(file);
-        }
-
-        function processData(data) {
-            const songName = data.songName || "未知关卡";
-            const levelPath = data.levelPath || "未知路径";
-            const timestamp = data.timestamp ? new Date(data.timestamp * 1000).toLocaleString('zh-CN') : "无时间戳";
-            const offsetsObj = data.offsets || {};
-
-            const keys = Object.keys(offsetsObj).map(Number).sort((a, b) => a - b);
-            if (keys.length === 0) {
-                alert('未找到任何 offsets 偏移点数据！');
-                return;
-            }
-
-            totalNotesCount = keys.length;
-
-            const chartData = [];
-            const pointColors = [];
-            const offsetValues = [];
-
-            chartData.length = totalNotesCount;
-            pointColors.length = totalNotesCount;
-            offsetValues.length = totalNotesCount;
-
-            for (let i = 0; i < totalNotesCount; i++) {
-                const k = keys[i];
-                const node = offsetsObj[k];
-                const v = typeof node === 'object' ? node.v : node; 
-                const j = typeof node === 'object' ? node.j : 3;
-
-                chartData[i] = { x: k, y: v };
-                offsetValues[i] = v;
-                pointColors[i] = (JUDGE_MAP[j] || JUDGE_MAP[3]).color;
-            }
-
-
-            let sum = 0;
-            let absSum = 0;
-            let max = -Infinity;
-            let min = Infinity;
-
-            for (let i = 0; i < totalNotesCount; i++) {
-                const val = offsetValues[i];
-                sum += val;
-                absSum += Math.abs(val);
-                if (val > max) max = val;
-                if (val < min) min = val;
-            }
-
-            const avg = sum / totalNotesCount;
-            const absAvg = absSum / totalNotesCount;
-
-            if (document.getElementById('meta-song-name')) document.getElementById('meta-song-name').textContent = songName;
-            if (document.getElementById('meta-level-path')) document.getElementById('meta-level-path').textContent = levelPath;
-            if (document.getElementById('meta-total-notes')) document.getElementById('meta-total-notes').textContent = `${totalNotesCount}`;
-            if (document.getElementById('meta-timestamp')) document.getElementById('meta-timestamp').textContent = timestamp;
-            
-            if (document.getElementById('stat-avg')) document.getElementById('stat-avg').textContent = `${avg.toFixed(4)} ms`;
-            if (document.getElementById('stat-abs-avg')) document.getElementById('stat-abs-avg').textContent = `${absAvg.toFixed(4)} ms`;
-            if (document.getElementById('stat-max')) document.getElementById('stat-max').textContent = `${max >= 0 ? '+' : ''}${max.toFixed(4)} ms`;
-            if (document.getElementById('stat-min')) document.getElementById('stat-min').textContent = `${min >= 0 ? '+' : ''}${min.toFixed(4)} ms`;
-
-        
-            spacingSlider.value = 0; 
-            spacingVal.textContent = 'Fit';
-            chartContainer.style.width = '100%';
-
-       
-            const defaultSize = totalNotesCount > 5000 ? 3 : 5;
-            sizeSlider.value = defaultSize;
-            sizeVal.textContent = defaultSize + 'px';
-
-            dashboard.classList.remove('hidden');
-
-            const minX = keys[0];
-            const maxX = keys[totalNotesCount - 1];
-            const avgLine = [{ x: minX, y: avg }, { x: maxX, y: avg }];
-            const madPos = [{ x: minX, y: absAvg }, { x: maxX, y: absAvg }];
-            const madNeg = [{ x: minX, y: -absAvg }, { x: maxX, y: -absAvg }];
-
-            if (chartInstance) chartInstance.destroy();
-
-            const ctx = document.getElementById('scatter-chart').getContext('2d');
-            const maxBoundary = Math.max(Math.abs(max), Math.abs(min), absAvg, 5);
-
-            chartInstance = new Chart(ctx, {
-                data: {
-                    datasets: [
-                        {
-                            type: 'scatter',
-                            label: '偏移点',
-                            data: chartData,
-                            backgroundColor: pointColors,
-                            borderColor: '#1e293b',
-                            borderWidth: 0.1,
-                            pointRadius: defaultSize,
-                            pointHoverRadius: defaultSize + 2,
-                            order: 1
-                        },
-                        {
-                            type: 'line',
-                            label: 'Avg',
-                            data: avgLine,
-                            borderColor: '#4ade80',
-                            borderWidth: 2,
-                            fill: false,
-                            pointRadius: 0,
-                            order: 2
-                        },
-                        {
-                            type: 'line',
-                            label: '+MAD',
-                            data: madPos,
-                            borderColor: '#f472b6',
-                            borderWidth: 1.5,
-                            borderDash: [5, 5],
-                            fill: false,
-                            pointRadius: 0,
-                            order: 3
-                        },
-                        {
-                            type: 'line',
-                            label: '-MAD',
-                            data: madNeg,
-                            borderColor: '#f472b6',
-                            borderWidth: 1.5,
-                            borderDash: [5, 5],
-                            fill: false,
-                            pointRadius: 0,
-                            order: 4
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    animation: false,
-                    parsing: false,
-                    normalized: true,
-                    spanGaps: true,
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: {
-                            enabled: true,
-                            animation: false,
-                            callbacks: {
-                                label: function(context) {
-                                    if (context.dataset.type === 'scatter') {
-                                        const node = offsetsObj[context.raw.x];
-                                        const j = typeof node === 'object' ? node.j : 3;
-                                        const name = (JUDGE_MAP[j] || {}).name || "Unknown";
-                                        return `${context.raw.x}: ${context.raw.y.toFixed(4)} ms [${name}]`;
-                                    }
-                                    return `${context.dataset.label}: ${context.raw.y.toFixed(4)} ms`;
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        x: {
-                            type: 'linear',
-                            position: 'bottom',
-                            title: { display: true, text: '按键 / 轨道编号', color: '#94a3b8' },
-                            ticks: { 
-                                color: '#94a3b8', 
-                                stepSize: 1,
-                                maxTicksLimit: 50 
-                            },
-                            grid: { color: '#334155' }
-                        },
-                        y: {
-                            min: -maxBoundary - 2,
-                            max: maxBoundary + 2,
-                            title: { display: true, text: '偏移 (ms)', color: '#94a3b8' },
-                            ticks: {
-                                color: '#94a3b8',
-                                callback: value => (value >= 0 ? '+' : '') + value + ' ms'
-                            },
-                            grid: {
-                                color: context => context.tick.value === 0 ? '#64748b' : '#33415511',
-                                lineWidth: context => context.tick.value === 0 ? 2 : 1
-                            }
-                        }
-                    }
-                }
-            });
-        }
-    </script>
 </body>
 </html>
