@@ -524,15 +524,25 @@ function renderXaccChart() {
     let runningWeightedSum = 0;
     let runningCount = 0;
 
-    globalOffsets.forEach((item, index) => {
-        const offset = item[0];
+    const validTypes = [0, 1, 2, 3, 4, 5, 8, 9]; 
+
+    globalOffsets.forEach((item) => {
         const type = item[1];
-        const typeMap = {0: "tooEarly", 1: "tooEarly", 2: "early", 3: "perfect", 4: "lPerfect", 5: "late", 6: "late"};
-        const key = typeMap[type] || "failMiss";
-        
-        runningWeightedSum += JD_WEIGHTS[key] || 0;
-        runningCount++;
-        xaccData.push((runningWeightedSum / runningCount) * 100);
+        if (validTypes.includes(type)) {
+            let weight = 0;
+
+            if (type === 8 || type === 9) weight = JD_WEIGHTS["failMiss"];
+            else if (type === 0) weight = JD_WEIGHTS["tooEarly"];
+            else if (type === 1) weight = JD_WEIGHTS["early"];
+            else if (type === 2) weight = JD_WEIGHTS["ePerfect"];
+            else if (type === 3) weight = JD_WEIGHTS["perfect"];
+            else if (type === 4) weight = JD_WEIGHTS["lPerfect"];
+            else if (type === 5) weight = JD_WEIGHTS["late"];
+            
+            runningWeightedSum += weight;
+            runningCount++;
+            xaccData.push((runningWeightedSum / runningCount) * 100);
+        }
     });
 
     const ctx = document.getElementById('xaccChart').getContext('2d');
