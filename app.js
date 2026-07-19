@@ -33,6 +33,7 @@ let globalAvg = 0;
 let globalStdDev = 0;
 let globalCounts = {};
 let myChart = null;
+let xaccChart = null;
 let distributionChart = null;
 
 
@@ -280,7 +281,7 @@ function renderDistributionChart() {
             plugins: {
                 legend: {
                     position: 'top',
-                    labels: { color: '#fff', boxWidth: 12, font: { size: 10 }, padding: 15 }
+                    labels: { color: '#fff', boxWidth: 12, font: { size: 14 }, padding: 15 }
                 },
                 tooltip: {
                     callbacks: {
@@ -357,8 +358,9 @@ function renderScatterChart() {
             }
         }
 
+
         finalDatasets.push({
-            label: '动态 Avg 曲线',
+            label: 'Avg',
             type: 'line',
             data: avgLineData,
             borderColor: '#ffb74d',
@@ -367,7 +369,7 @@ function renderScatterChart() {
             fill: false,
             tension: 0.1,
             showLine: true,
-            hidden: !showDynamicAvg 
+            hidden: showDynamicAvg 
         });
     }
     
@@ -387,12 +389,12 @@ function renderScatterChart() {
             spanGaps: true,
             scales: {
                 x: {
-                    title: { display: true, text: '按键顺序 (Hit Index)', color: '#aaa' },
+                    title: { display: true, text: '按键', color: '#aaa' },
                     grid: { color: '#252525' },
                     ticks: { color: '#bbb' }
                 },
                 y: {
-                    title: { display: true, text: '偏移量 (Offset ms)', color: '#aaa' },
+                    title: { display: true, text: '偏移量 (ms)', color: '#aaa' },
                     grid: { color: '#252525' },
                     ticks: { color: '#bbb' }
                 }
@@ -400,7 +402,7 @@ function renderScatterChart() {
             plugins: {
                 legend: {
                     position: 'top',
-                    labels: { color: '#fff', boxWidth: 12, font: { size: 10 }, padding: 15 }
+                    labels: { color: '#fff', boxWidth: 12, font: { size: 14 }, padding: 15 }
                 },
                 tooltip: {
                     callbacks: {
@@ -457,58 +459,6 @@ function renderScatterChart() {
     });
 }
 
-function updateAllCharts() {
-    renderScatterChart();
-    renderDistributionChart();
-}
-
-document.getElementById('jsonFile').addEventListener('change', function(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = function(evt) {
-        try {
-            const data = JSON.parse(evt.target.result);
-            if (!data.offsets) {
-                alert("无效的 JSON 数据");
-                return;
-            }
-            
-            let parsedOffsets = [];
-            if (Array.isArray(data.offsets)) {
-                parsedOffsets = data.offsets;
-                document.getElementById('fileVersion').innerText = "Version: 1.7.1+";
-            } else if (typeof data.offsets === 'object' && data.offsets !== null) {
-                const sortedKeys = Object.keys(data.offsets).sort((a, b) => parseInt(a) - parseInt(b));
-                parsedOffsets = sortedKeys.map(key => {
-                    const node = data.offsets[key];
-                    return [node.v, node.j];
-                });
-                document.getElementById('fileVersion').innerText = "Version: 1.7.0";
-            } else {
-                alert("未识别的 offsets 数据格式！");
-                return;
-            }
-
-            globalOffsets = parsedOffsets;
-            
-            document.getElementById('metaInfo').innerHTML = `
-                <strong>谱面歌名:</strong> ${data.songName || 'Unknown'}<br>
-                <strong>文件路径:</strong> ${data.levelPath || 'Unknown'}<br>
-                <strong>分析时间:</strong> ${data.timestamp ? new Date(data.timestamp * 1000).toLocaleString() : 'Unknown'}
-            `;
-
-            calculateStaticStats();
-            updateAllCharts();
-        } catch (err) {
-            alert("JSON 解析失败，请检查文件结构。");
-            console.error(err);
-        }
-    };
-    reader.readAsText(file);
-});
-
 function calculateStaticStats() {
     const totalHits = globalOffsets.length;
     const validOffsets = globalOffsets.map(item => item[0]).filter(val => !isNaN(val));
@@ -539,9 +489,19 @@ function calculateStaticStats() {
         globalCounts[5]      
     ];
     const xacc = calcXACC(judgementsArray);
+    let maxCombo = 0;
+    let currentCombo = 0;
+    globalOffsets.forEach(item => {
+        if (item[1] === 3) {
+            currentCombo++;
+            if (currentCombo > maxCombo) maxCombo = currentCombo;
+        } else {
+            currentCombo = 0;
+        }
+    });
 
     document.getElementById('statTotal').innerText = totalHits.toLocaleString();
-    document.getElementById('statAvg').innerText = `${globalAvg >= 0 ? '+' : ''}${globalAvg.toFixed(2)} ms`;
+    document.getElementById('statMaxCombo').innerText = maxCombo.toString();
     document.getElementById('xaccValue').innerText = `XACC: ${(xacc * 100).toFixed(2)}%`;
 }
 
@@ -559,8 +519,125 @@ function calcXACC(judgements) {
     return weightedSum / total;
 }
 
+function renderXaccChart() {
+    const xaccData = [];
+    let runningWeightedSum = 0;
+    let runningCount = 0;
+
+    globalOffsets.forEach((item, index) => {
+        const offset = item[0];
+        const type = item[1];
+        const typeMap = {0: "tooEarly", 1: "tooEarly", 2: "early", 3: "perfect", 4: "lPerfect", 5: "late", 6: "late"};
+        const key = typeMap[type] || "failMiss";
+        
+        runningWeightedSum += JD_WEIGHTS[key] || 0;
+        runningCount++;
+        xaccData.push((runningWeightedSum / runningCount) * 100);
+    });
+
+    const ctx = document.getElementById('xaccChart').getContext('2d');
+    if (xaccChart) xaccChart.destroy();
+    xaccChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: globalOffsets.map((_, i) => i + 1),
+            datasets: [{
+                label: '累计 XACC (%)',
+                data: xaccData,
+                borderColor: '#4FC3F7',
+                borderWidth: 2,
+                pointRadius: 0,
+                pointHoverRadius: 5,
+                fill: true,
+                backgroundColor: 'rgba(79, 195, 247, 0.15)'
+            }]
+        },
+        options: {
+            responsive: true,
+            animation: false,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: { color: '#fff', boxWidth: 12, font: { size: 14 }, padding: 15 }
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false, 
+                    callbacks: {
+                        label: function(context) {
+                            return context.label + ': ' + context.raw.toFixed(3) + '%';
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: { min: 0, max: 100, ticks: { color: '#bbb' } },
+                x: { ticks: { color: '#bbb' } }
+            }
+        }
+    });
+}
+
 document.getElementById('resetZoom').addEventListener('click', () => {
     if (myChart) {
         myChart.resetZoom();
     }
+});
+
+function updateAllCharts() {
+    renderScatterChart();
+    renderDistributionChart();
+    renderXaccChart()
+}
+
+document.getElementById('jsonFile').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+        try {
+            const data = JSON.parse(evt.target.result);
+            if (!data.offsets) {
+                alert("无效的 JSON 数据");
+                return;
+            }
+            
+            let parsedOffsets = [];
+            let versionText = "Unknown";
+            
+            if (Array.isArray(data.offsets)) {
+                parsedOffsets = data.offsets;
+                versionText = "Version: 1.7.1+";
+            } else if (typeof data.offsets === 'object' && data.offsets !== null) {
+                const sortedKeys = Object.keys(data.offsets).sort((a, b) => parseInt(a) - parseInt(b));
+                parsedOffsets = sortedKeys.map(key => {
+                    const node = data.offsets[key];
+                    return [node.v, node.j];
+                });
+                versionText = "Version: 1.7.0";
+            } else {
+                alert("未识别的 offsets 数据格式！");
+                return;
+            }
+
+            globalOffsets = parsedOffsets;
+    
+            document.getElementById('metaInfo').innerHTML = `
+                <div style="font-weight: bold; margin-bottom: 4px;">${versionText}</div>
+                <strong>谱面歌名:</strong> ${data.songName || 'Unknown'}<br>
+                <strong>文件路径:</strong> ${data.levelPath || 'Unknown'}<br>
+                <strong>分析时间:</strong> ${data.timestamp ? new Date(data.timestamp * 1000).toLocaleString() : 'Unknown'}
+            `;
+
+            calculateStaticStats();
+            updateAllCharts();
+            
+        } catch (err) {
+            alert("JSON 解析失败!");
+            console.error(err);
+        }
+    };
+    reader.readAsText(file);
 });
