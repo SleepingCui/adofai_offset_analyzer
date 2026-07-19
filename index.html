@@ -35,6 +35,13 @@
             border-radius: 12px;
             box-shadow: 0 4px 20px rgba(0,0,0,0.6);
         }
+        .page-title {
+            margin: 0 0 20px 0;
+            font-size: 2rem;
+            font-weight: 600;
+            color: var(--text-color);
+            text-align: center;
+        }
         #metaInfo {
             font-size: 0.9rem; 
             color: #aaa; 
@@ -81,6 +88,8 @@
         .btn:hover { background-color: #45a049; }
         .btn-reset { background-color: #2196F3; }
         .btn-reset:hover { background-color: #0b7dda; }
+        .btn-clear { background-color: #f44336; }
+        .btn-clear:hover { background-color: #d32f2f; }
         input[type="file"] {
             position: absolute;
             font-size: 100px;
@@ -224,6 +233,7 @@
 <body>
 
 <div class="container">
+    <h1 class="page-title">ADOFAI Offset Analyzer</h1>
     <div class="header-panel">
         <div class="button-group">
             <div class="file-input-wrapper">
@@ -231,6 +241,7 @@
                 <input type="file" id="jsonFile" accept=".json">
             </div>
             <button class="btn btn-reset" id="resetZoom">重置缩放</button>
+            <button class="btn btn-clear" id="clearData">清空</button>
         </div>
         <div id="metaInfo" style="font-size: 0.9rem; color: #aaa; text-align: right;">
             等待导入...

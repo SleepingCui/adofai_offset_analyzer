@@ -585,6 +585,38 @@ document.getElementById('resetZoom').addEventListener('click', () => {
     }
 });
 
+function clearData() {
+    globalOffsets = [];
+    globalAvg = 0;
+    globalStdDev = 0;
+    globalCounts = {};
+
+    for (let i = 0; i <= 11; i++) globalCounts[i] = 0;
+
+    document.getElementById('statTotal').innerText = '-';
+    document.getElementById('statMaxCombo').innerText = '-';
+    document.getElementById('xaccValue').innerText = 'XACC: -';
+    document.getElementById('metaInfo').innerText = '等待导入...';
+    document.getElementById('pureNumbersContainer').innerHTML = '';
+    document.getElementById('distributionStats').innerHTML = '';
+    document.getElementById('jsonFile').value = '';
+
+    if (myChart) {
+        myChart.destroy();
+        myChart = null;
+    }
+    if (xaccChart) {
+        xaccChart.destroy();
+        xaccChart = null;
+    }
+    if (distributionChart) {
+        distributionChart.destroy();
+        distributionChart = null;
+    }
+}
+
+document.getElementById('clearData').addEventListener('click', clearData);
+
 function updateAllCharts() {
     renderScatterChart();
     renderDistributionChart();
