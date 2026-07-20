@@ -35,6 +35,7 @@ let globalCounts = {};
 let myChart = null;
 let xaccChart = null;
 let distributionChart = null;
+let pieChart = null;
 
 
 
@@ -468,6 +469,8 @@ function calculateStaticStats() {
     if (totalHits > 0) {
         const variance = validOffsets.reduce((sum, val) => sum + Math.pow(val - globalAvg, 2), 0) / totalHits;
         globalStdDev = Math.sqrt(variance);
+        const ur = globalStdDev * 10;
+        document.getElementById('statUR').innerText = ur.toFixed(2)
     } else {
         globalStdDev = 0;
     }
@@ -589,6 +592,41 @@ function renderXaccChart() {
     });
 }
 
+function renderPieChart() {
+    if (globalOffsets.length === 0) return;
+
+    const ctx = document.getElementById('distributionPieChart').getContext('2d');
+    if (pieChart) pieChart.destroy();
+
+    const groups = {
+        'Too Early': globalCounts[0],
+        'VE/VL': globalCounts[1] + globalCounts[5],
+        'EP/LP': globalCounts[2] + globalCounts[4],
+        'Perfect': globalCounts[3],
+        'Multipress': globalCounts[7],
+        'Overload/Miss': globalCounts[8] + globalCounts[9]
+    };
+
+    pieChart = new Chart(ctx, {
+        type: 'pie',
+        data: {
+            labels: Object.keys(groups),
+            datasets: [{
+                data: Object.values(groups),
+                backgroundColor: ['#FF0000', '#FF6F4E', '#A0FF4E', '#60FF4E', '#00FFED', '#D958FF']
+            }]
+        },
+        options: {
+            animation: false,
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom', labels: { color: '#fff' } }
+            }
+        }
+    });
+}
+
 document.getElementById('resetZoom').addEventListener('click', () => {
     if (myChart) {
         myChart.resetZoom();
@@ -610,6 +648,7 @@ function clearData() {
     document.getElementById('pureNumbersContainer').innerHTML = '';
     document.getElementById('distributionStats').innerHTML = '';
     document.getElementById('jsonFile').value = '';
+    document.getElementById('statUR').innerText = '-';
 
     if (myChart) {
         myChart.destroy();
@@ -630,7 +669,8 @@ document.getElementById('clearData').addEventListener('click', clearData);
 function updateAllCharts() {
     renderScatterChart();
     renderDistributionChart();
-    renderXaccChart()
+    renderXaccChart();
+    renderPieChart();
 }
 
 document.getElementById('jsonFile').addEventListener('change', function(e) {

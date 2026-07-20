@@ -8,6 +8,7 @@
     <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.2.0/dist/chartjs-plugin-zoom.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-matrix@2.0.1/dist/chartjs-chart-matrix.min.js"></script>
     
     <style>
         :root {
@@ -257,6 +258,10 @@
             <h3>最大连击数</h3>
             <div class="value" id="statMaxCombo">-</div>
         </div>
+        <div class="stats-card" style="border-left-color: #d958ff;">
+            <h3>UR (不稳定度)</h3>
+            <div class="value" id="statUR">-</div>
+        </div>
     </div>
 
 
@@ -282,14 +287,21 @@
                 <canvas id="distributionChart"></canvas>
             </div>
         </div>
+        
+        <div class="chart-section">
+            <h3>判定分布比例</h3>
+            <div class="chart-wrapper">
+            <canvas id="distributionPieChart"></canvas>
+        </div>
 
+        
         <div class="chart-section">
             <h3>XACC变化曲线</h3>
             <div class="chart-wrapper">
             <canvas id="xaccChart"></canvas> 
         </div>
-    </div>
 
+    </div>
 
     <div class="tip">
     提示:直接点击图例可切换显示判定类型<br>
