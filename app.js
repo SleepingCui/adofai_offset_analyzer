@@ -10,10 +10,11 @@ const MARGIN_MAP = {
     8: { label: 'FailMiss', color: '#D958FF' },
     9: { label: 'FailOverload', color: '#D958FF' },
     10: { label: 'Auto', color: '#FFFFFF' },
-    11: { label: 'OverPress', color: '#D958FF' }
+    11: { label: 'OverPress', color: '#D958FF' },
+    12: { label: 'XPerfect', color: '#4DCCFF' } 
 };
 
-const DISPLAY_ORDER = [9, 0, 1, 2, 3, 4, 5, 7, 8];
+const DISPLAY_ORDER = [9, 0, 1, 2, 12, 3, 4, 5, 7, 8];
 let showDynamicAvg = false;
 
 const JD_WEIGHTS = {
@@ -22,12 +23,10 @@ const JD_WEIGHTS = {
     "early": 0.4,
     "ePerfect": 0.75,
     "perfect": 1.0,
+    "xPerfect": 1.0, 
     "lPerfect": 0.75,
     "late": 0.4
 };
-
-
-
 let globalOffsets = [];
 let globalAvg = 0;
 let globalStdDev = 0;
@@ -36,8 +35,6 @@ let myChart = null;
 let xaccChart = null;
 let distributionChart = null;
 let pieChart = null;
-
-
 
 function gaussianPDF(x, mean, stdDev) {
     const coefficient = 1 / (stdDev * Math.sqrt(2 * Math.PI));
@@ -309,7 +306,9 @@ function renderScatterChart() {
     const numContainer = document.getElementById('pureNumbersContainer');
     numContainer.innerHTML = '';
     DISPLAY_ORDER.forEach(type => {
-        const count = globalCounts[type];
+        const count = globalCounts[type] || 0;
+        if (type === 12 && count === 0) return;
+
         const span = document.createElement('span');
         span.className = 'pure-number';
         span.style.color = MARGIN_MAP[type].color;
@@ -317,10 +316,10 @@ function renderScatterChart() {
         span.title = MARGIN_MAP[type].label; 
         numContainer.appendChild(span);
     });
-    
 
     const datasetsMap = {};
     DISPLAY_ORDER.forEach(i => {
+        if (i === 12 && (!globalCounts[12] || globalCounts[12] === 0)) return;
         datasetsMap[i] = {
             label: MARGIN_MAP[i].label,
             data: [],
@@ -358,7 +357,6 @@ function renderScatterChart() {
                 avgLineData.push({ x: index + 1, y: runningSum / runningCount });
             }
         }
-
 
         finalDatasets.push({
             label: 'Avg',
@@ -470,32 +468,35 @@ function calculateStaticStats() {
         const variance = validOffsets.reduce((sum, val) => sum + Math.pow(val - globalAvg, 2), 0) / totalHits;
         globalStdDev = Math.sqrt(variance);
         const ur = globalStdDev * 10;
-        document.getElementById('statUR').innerText = ur.toFixed(2)
+        document.getElementById('statUR').innerText = ur.toFixed(2);
     } else {
         globalStdDev = 0;
+        document.getElementById('statUR').innerText = '-';
     }
 
-    for (let i = 0; i <= 11; i++) globalCounts[i] = 0;
+    for (let i = 0; i <= 12; i++) globalCounts[i] = 0;
     globalOffsets.forEach(item => {
         const marginType = item[1];
         if (globalCounts[marginType] !== undefined) globalCounts[marginType]++;
     });
 
     const failMissSum = globalCounts[8] + globalCounts[9]; 
+    
     const judgementsArray = [
-        failMissSum,   
+        failMissSum,  
         globalCounts[0],     
         globalCounts[1],     
         globalCounts[2],     
-        globalCounts[3],     
+        globalCounts[3] + (globalCounts[12] || 0), 
         globalCounts[4],     
-        globalCounts[5]      
+        globalCounts[5]    
     ];
+    
     const xacc = calcXACC(judgementsArray);
     let maxCombo = 0;
     let currentCombo = 0;
     globalOffsets.forEach(item => {
-        if (item[1] === 3) {
+        if (item[1] === 3 || item[1] === 12) {
             currentCombo++;
             if (currentCombo > maxCombo) maxCombo = currentCombo;
         } else {
@@ -526,8 +527,7 @@ function renderXaccChart() {
     const xaccData = [];
     let runningWeightedSum = 0;
     let runningCount = 0;
-
-    const validTypes = [0, 1, 2, 3, 4, 5, 8, 9]; 
+    const validTypes = [0, 1, 2, 3, 4, 5, 8, 9, 12]; 
 
     globalOffsets.forEach((item) => {
         const type = item[1];
@@ -539,6 +539,7 @@ function renderXaccChart() {
             else if (type === 1) weight = JD_WEIGHTS["early"];
             else if (type === 2) weight = JD_WEIGHTS["ePerfect"];
             else if (type === 3) weight = JD_WEIGHTS["perfect"];
+            else if (type === 12) weight = JD_WEIGHTS["xPerfect"]; 
             else if (type === 4) weight = JD_WEIGHTS["lPerfect"];
             else if (type === 5) weight = JD_WEIGHTS["late"];
             
@@ -598,22 +599,33 @@ function renderPieChart() {
     const ctx = document.getElementById('distributionPieChart').getContext('2d');
     if (pieChart) pieChart.destroy();
 
-    const groups = {
-        'Too Early': globalCounts[0],
-        'VE/VL': globalCounts[1] + globalCounts[5],
-        'EP/LP': globalCounts[2] + globalCounts[4],
-        'Perfect': globalCounts[3],
-        'Multipress': globalCounts[7],
-        'Overload/Miss': globalCounts[8] + globalCounts[9]
+    const rawGroups = {
+        'Too Early': { count: globalCounts[0], color: '#FF0000' },
+        'Very Early/Late': { count: globalCounts[1] + globalCounts[5], color: '#FF6F4E' },
+        'Early/Late Perfect': { count: globalCounts[2] + globalCounts[4], color: '#A0FF4E' },
+        'Perfect': { count: globalCounts[3], color: '#60FF4E' },
+        'XPerfect': { count: globalCounts[12] || 0, color: '#4DCCFF' },
+        'Multipress': { count: globalCounts[7], color: '#00FFED' },
+        'Overload/Miss': { count: globalCounts[8] + globalCounts[9], color: '#D958FF' }
     };
+
+    const groups = {};
+    Object.keys(rawGroups).forEach(key => {
+        if (key === 'XPerfect' && rawGroups[key].count === 0) return;
+        groups[key] = rawGroups[key];
+    });
+
+    const labels = Object.keys(groups);
+    const dataCounts = labels.map(l => groups[l].count);
+    const backgroundColors = labels.map(l => groups[l].color);
 
     pieChart = new Chart(ctx, {
         type: 'pie',
         data: {
-            labels: Object.keys(groups),
+            labels: labels,
             datasets: [{
-                data: Object.values(groups),
-                backgroundColor: ['#FF0000', '#FF6F4E', '#A0FF4E', '#60FF4E', '#00FFED', '#D958FF']
+                data: dataCounts,
+                backgroundColor: backgroundColors
             }]
         },
         options: {
@@ -639,7 +651,7 @@ function clearData() {
     globalStdDev = 0;
     globalCounts = {};
 
-    for (let i = 0; i <= 11; i++) globalCounts[i] = 0;
+    for (let i = 0; i <= 12; i++) globalCounts[i] = 0;
 
     document.getElementById('statTotal').innerText = '-';
     document.getElementById('statMaxCombo').innerText = '-';
@@ -661,6 +673,10 @@ function clearData() {
     if (distributionChart) {
         distributionChart.destroy();
         distributionChart = null;
+    }
+    if (pieChart) {
+        pieChart.destroy();
+        pieChart = null;
     }
 }
 
@@ -691,14 +707,14 @@ document.getElementById('jsonFile').addEventListener('change', function(e) {
             
             if (Array.isArray(data.offsets)) {
                 parsedOffsets = data.offsets;
-                versionText = "Version: 1.7.1+";
+                versionText = "1.7.1+";
             } else if (typeof data.offsets === 'object' && data.offsets !== null) {
                 const sortedKeys = Object.keys(data.offsets).sort((a, b) => parseInt(a) - parseInt(b));
                 parsedOffsets = sortedKeys.map(key => {
                     const node = data.offsets[key];
                     return [node.v, node.j];
                 });
-                versionText = "Version: 1.7.0";
+                versionText = "1.7.0";
             } else {
                 alert("未识别的 offsets 数据格式！");
                 return;
@@ -707,7 +723,7 @@ document.getElementById('jsonFile').addEventListener('change', function(e) {
             globalOffsets = parsedOffsets;
     
             document.getElementById('metaInfo').innerHTML = `
-                <div style="font-weight: bold; margin-bottom: 4px;">${versionText}</div>
+                <strong>Version:</strong> ${versionText || 'Unknown'}<br>
                 <strong>谱面歌名:</strong> ${data.songName || 'Unknown'}<br>
                 <strong>文件路径:</strong> ${data.levelPath || 'Unknown'}<br>
                 <strong>分析时间:</strong> ${data.timestamp ? new Date(data.timestamp * 1000).toLocaleString() : 'Unknown'}
