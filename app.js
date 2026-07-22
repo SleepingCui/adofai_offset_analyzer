@@ -14,7 +14,7 @@ const MARGIN_MAP = {
     12: { label: 'XPerfect', color: '#4DCCFF' } 
 };
 
-const DISPLAY_ORDER = [9, 0, 1, 2, 12, 3, 4, 5, 7, 8];
+const DISPLAY_ORDER = [9, 0, 1, 2, 12, 3, 4, 5, 7, 8, 10];
 let showDynamicAvg = false;
 
 const JD_WEIGHTS = {
@@ -24,6 +24,7 @@ const JD_WEIGHTS = {
     "ePerfect": 0.75,
     "perfect": 1.0,
     "xPerfect": 1.0, 
+    "auto": 1.0,
     "lPerfect": 0.75,
     "late": 0.4
 };
@@ -307,7 +308,7 @@ function renderScatterChart() {
     numContainer.innerHTML = '';
     DISPLAY_ORDER.forEach(type => {
         const count = globalCounts[type] || 0;
-        if (type === 12 && count === 0) return;
+        if ((type === 12 || type === 10) && count === 0) return;
 
         const span = document.createElement('span');
         span.className = 'pure-number';
@@ -319,7 +320,8 @@ function renderScatterChart() {
 
     const datasetsMap = {};
     DISPLAY_ORDER.forEach(i => {
-        if (i === 12 && (!globalCounts[12] || globalCounts[12] === 0)) return;
+        if ((i === 12 || i === 10) && (!globalCounts[i] || globalCounts[i] === 0)) return;
+        
         datasetsMap[i] = {
             label: MARGIN_MAP[i].label,
             data: [],
@@ -487,7 +489,7 @@ function calculateStaticStats() {
         globalCounts[0],     
         globalCounts[1],     
         globalCounts[2],     
-        globalCounts[3] + (globalCounts[12] || 0), 
+        globalCounts[3] + (globalCounts[12] || 0) + (globalCounts[10] || 0), 
         globalCounts[4],     
         globalCounts[5]    
     ];
@@ -496,7 +498,8 @@ function calculateStaticStats() {
     let maxCombo = 0;
     let currentCombo = 0;
     globalOffsets.forEach(item => {
-        if (item[1] === 3 || item[1] === 12) {
+      
+        if (item[1] === 3 || item[1] === 12 || item[1] === 10) {
             currentCombo++;
             if (currentCombo > maxCombo) maxCombo = currentCombo;
         } else {
@@ -527,7 +530,7 @@ function renderXaccChart() {
     const xaccData = [];
     let runningWeightedSum = 0;
     let runningCount = 0;
-    const validTypes = [0, 1, 2, 3, 4, 5, 8, 9, 12]; 
+    const validTypes = [0, 1, 2, 3, 4, 5, 8, 9, 12, 10]; 
 
     globalOffsets.forEach((item) => {
         const type = item[1];
@@ -540,6 +543,7 @@ function renderXaccChart() {
             else if (type === 2) weight = JD_WEIGHTS["ePerfect"];
             else if (type === 3) weight = JD_WEIGHTS["perfect"];
             else if (type === 12) weight = JD_WEIGHTS["xPerfect"]; 
+            else if (type === 10) weight = JD_WEIGHTS["auto"]; 
             else if (type === 4) weight = JD_WEIGHTS["lPerfect"];
             else if (type === 5) weight = JD_WEIGHTS["late"];
             
@@ -605,13 +609,14 @@ function renderPieChart() {
         'Early/Late Perfect': { count: globalCounts[2] + globalCounts[4], color: '#A0FF4E' },
         'Perfect': { count: globalCounts[3], color: '#60FF4E' },
         'XPerfect': { count: globalCounts[12] || 0, color: '#4DCCFF' },
+        'Auto': { count: globalCounts[10] || 0, color: '#FFFFFF' },
         'Multipress': { count: globalCounts[7], color: '#00FFED' },
         'Overload/Miss': { count: globalCounts[8] + globalCounts[9], color: '#D958FF' }
     };
 
     const groups = {};
     Object.keys(rawGroups).forEach(key => {
-        if (key === 'XPerfect' && rawGroups[key].count === 0) return;
+        if ((key === 'XPerfect' || key === 'Auto') && rawGroups[key].count === 0) return;
         groups[key] = rawGroups[key];
     });
 

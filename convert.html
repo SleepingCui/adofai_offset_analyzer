@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>tsmz2json</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        #dropZone {
+            border: 2px dashed #ccc;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        #dropZone:hover, #dropZone.drag-over {
+            border-color: #4CAF50;
+            background: #f0fff0;
+        }
+        #output {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+            white-space: pre-wrap;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        button {
+            margin-top: 10px;
+            padding: 10px 20px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        .error {
+            color: red;
+        }
+    </style>
+</head>
+<body>
+    <h1>tsmz2json converter</h1>
+    
+    <div id="dropZone">
+        <p>拖拽 .tlog.gz 文件到此处，或点击选择文件</p>
+        <input type="file" id="fileInput" accept=".tlog.gz,.gz" style="display:none">
+    </div>
+    
+    <div id="status"></div>
+    <pre id="output" style="display:none"></pre>
+    <button id="downloadBtn" style="display:none">
+        下载 JSON</button>
+
+    <script>
+        function readString(view, offset) {
+            let length = 0;
+            let shift = 0;
+            
+            do {
+                const b = view[offset++];
+                length |= (b & 0x7F) << shift;
+                shift += 7;
+            } while (view[offset - 1] & 0x80);
+            
+            const str = new TextDecoder().decode(
+                new Uint8Array(view.buffer, view.byteOffset + offset, length)
+            );
+            return { str, newOffset: offset + length };
+        }
+
+        function parseData(decompressed) {
+            let offset = 0;
+            const view = new Uint8Array(decompressed);
+            const dv = new DataView(decompressed.buffer, decompressed.byteOffset);
+
+            const magic = new TextDecoder().decode(view.slice(offset, offset + 4));
+            if (magic !== 'TSMZ') {
+                throw new Error('Invalid file format: expected TSMZ, got ' + magic);
+            }
+            offset += 4;
+
+            const version = view[offset++];
+
+            const timestamp = dv.getBigInt64(offset, true);
+            offset += 8;
+
+            const { str: songName, newOffset: o1 } = readString(view, offset);
+            const { str: levelPath, newOffset: o2 } = readString(view, o1);
+            offset = o2;
+
+            const offsets = [];
+            while (offset + 12 <= view.byteLength) {
+                const timing = dv.getFloat64(offset, true);
+                const marginCode = dv.getInt32(offset + 8, true);
+                offsets.push([Math.round(timing * 10000) / 10000, marginCode]);
+                offset += 12;
+            }
+
+            return {
+                songName: songName || '',
+                levelPath: levelPath || '',
+                timestamp: Number(timestamp),
+                offsets: offsets
+            };
+        }
+
+        async function handleFile(file) {
+            const status = document.getElementById('status');
+            const output = document.getElementById('output');
+            const downloadBtn = document.getElementById('downloadBtn');
+            
+            status.textContent = '正在解压...';
+            status.className = '';
+            
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const compressed = new Uint8Array(arrayBuffer);
+                
+                const blob = new Blob([compressed]);
+                const ds = new DecompressionStream('gzip');
+                const decompressedStream = blob.stream().pipeThrough(ds);
+                const decompressedBuffer = await new Response(decompressedStream).arrayBuffer();
+                
+                status.textContent = '正在解析...';
+                
+                const result = parseData(new Uint8Array(decompressedBuffer));
+                
+                const jsonString = JSON.stringify(result, null, 2);
+                output.textContent = jsonString;
+                output.style.display = 'block';
+                
+                status.textContent = `转换成功！共 ${result.offsets.length} 条记录`;
+                status.className = 'success';
+                downloadBtn.style.display = 'inline';
+                
+                window._jsonResult = jsonString;
+                window._fileName = file.name.replace('.tlog.gz', '.json').replace('.gz', '.json');
+                
+            } catch (err) {
+                status.textContent = '错误: ' + err;
+                status.className = 'error';
+                output.style.display = 'none';
+                downloadBtn.style.display = 'none';
+            }
+        }
+
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('drag-over');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('drag-over');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            
+            const file = e.dataTransfer.files[0];
+            if (file) handleFile(file);
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) handleFile(file);
+        });
+
+        document.getElementById('downloadBtn').addEventListener('click', () => {
+            if (!window._jsonResult) return;
+            
+            const blob = new Blob([window._jsonResult], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = window._fileName || 'output.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+    </script>
+</body>
+</html>
