@@ -91,6 +91,16 @@
         .btn-reset:hover { background-color: #0b7dda; }
         .btn-clear { background-color: #f44336; }
         .btn-clear:hover { background-color: #d32f2f; }
+        .lang-select {
+            background-color: var(--card-color);
+            color: white;
+            border: 1px solid #555;
+            padding: 9px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            outline: none;
+        }
         input[type="file"] {
             position: absolute;
             font-size: 100px;
@@ -224,7 +234,7 @@
                 flex-direction: column;
                 width: 100%;
             }
-            .btn {
+            .btn, .lang-select {
                 width: 100%;
                 text-align: center;
             }
@@ -238,33 +248,36 @@
     <div class="header-panel">
         <div class="button-group">
             <div class="file-input-wrapper">
-                <button class="btn">导入 JSON</button>
+                <button class="btn" data-i18n="importJson">导入 JSON</button>
                 <input type="file" id="jsonFile" accept=".json">
             </div>
-            <button class="btn btn-reset" id="resetZoom">重置缩放</button>
-            <button class="btn btn-clear" id="clearData">清空</button>
+            <button class="btn btn-reset" id="resetZoom" data-i18n="resetZoom">重置缩放</button>
+            <button class="btn btn-clear" id="clearData" data-i18n="clear">清空</button>
+            <select id="langSelect" class="lang-select">
+                <option value="zh">中文</option>
+                <option value="en">English</option>
+                <option value="kr">한국어</option>
+            </select>
         </div>
-        <div id="metaInfo" style="font-size: 0.9rem; color: #aaa; text-align: right;">
+        <div id="metaInfo" style="font-size: 0.9rem; color: #aaa; text-align: right;" data-i18n="waitingImport">
             等待导入...
         </div>
     </div>
 
     <div class="stats-grid">
         <div class="stats-card" style="border-left-color: #2196F3;">
-            <h3>总按键数</h3>
+            <h3 data-i18n="totalHits">总按键数</h3>
             <div class="value" id="statTotal">-</div>
         </div>
         <div class="stats-card" style="border-left-color: #ffb74d;">
-            <h3>最大连击数</h3>
+            <h3 data-i18n="maxCombo">最大连击数</h3>
             <div class="value" id="statMaxCombo">-</div>
         </div>
         <div class="stats-card" style="border-left-color: #d958ff;">
-            <h3>UR (不稳定度)</h3>
+            <h3 data-i18n="ur">UR (不稳定度)</h3>
             <div class="value" id="statUR">-</div>
         </div>
     </div>
-
-
 
     <div class="margin-counts-box" id="marginCountsBox">
         <div class="numbers-group" id="pureNumbersContainer">
@@ -274,14 +287,14 @@
 
     <div class="charts-container">
         <div class="chart-section">
-            <h3>偏移量散点图</h3>
+            <h3 data-i18n="scatterTitle">偏移量散点图</h3>
             <div class="chart-wrapper">
                 <canvas id="scatterChart"></canvas>
             </div>
         </div>
 
         <div class="chart-section">
-            <h3>正态分布图</h3>
+            <h3 data-i18n="distTitle">正态分布图</h3>
             <div class="distribution-stats" id="distributionStats"></div>
             <div class="chart-wrapper">
                 <canvas id="distributionChart"></canvas>
@@ -289,14 +302,14 @@
         </div>
 
         <div class="chart-section">
-            <h3>判定分布比例</h3>
+            <h3 data-i18n="pieTitle">判定分布比例</h3>
             <div class="chart-wrapper">
                 <canvas id="distributionPieChart"></canvas>
             </div>
         </div>
 
         <div class="chart-section">
-            <h3>XACC变化曲线</h3>
+            <h3 data-i18n="xaccTitle">XACC变化曲线</h3>
             <div class="chart-wrapper">
                 <canvas id="xaccChart"></canvas>
             </div>
@@ -304,11 +317,12 @@
     </div>
 
     <div class="tip">
-        提示:直接点击图例可切换显示判定类型<br>
+        <span data-i18n="legendTip">提示:直接点击图例可切换显示判定类型</span><br>
         <a href="https://github.com/SleepingCui/TimingShow" target="_blank">TimingShow</a> | <a href="https://github.com/SleepingCui/adofai_offset_analyzer" target="_blank">Website source</a> | <a href="convert.html" target="_blank">Binary Converter</a>
     </div>
 </div>
 
+<script src="i18n.js"></script>
 <script src="app.js"></script>
 
 </body>

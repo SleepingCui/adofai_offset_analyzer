@@ -1,3 +1,53 @@
+function getPreferredLanguage() {
+    const navLang = (navigator.language || navigator.userLanguage || '').toLowerCase();
+    
+    if (navLang.startsWith('zh')) return 'zh';
+    if (navLang.startsWith('ko') || navLang.startsWith('kr')) return 'kr';
+    if (navLang.startsWith('en')) return 'en';
+    
+    return 'en'; 
+}
+
+let currentLang = getPreferredLanguage();
+let currentMetaData = null;
+
+function t(key) {
+    return (I18N_STRINGS[currentLang] && I18N_STRINGS[currentLang][key]) || key;
+}
+
+function updateMetaInfo() {
+    const metaEl = document.getElementById('metaInfo');
+    if (!currentMetaData || globalOffsets.length === 0) {
+        metaEl.innerText = t('waitingImport');
+        return;
+    }
+
+    metaEl.innerHTML = `
+        <strong>Version:</strong> ${currentMetaData.versionText || 'Unknown'}<br>
+        <strong>${t('songName')}:</strong> ${currentMetaData.songName || 'Unknown'}<br>
+        <strong>${t('levelPath')}:</strong> ${currentMetaData.levelPath || 'Unknown'}<br>
+        <strong>${t('analysisTime')}:</strong> ${currentMetaData.timestamp ? new Date(currentMetaData.timestamp * 1000).toLocaleString() : 'Unknown'}
+    `;
+}
+
+function setLanguage(lang) {
+    if (!I18N_STRINGS[lang]) return;
+    currentLang = lang;
+
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (I18N_STRINGS[lang][key]) {
+            el.innerText = I18N_STRINGS[lang][key];
+        }
+    });
+
+    updateMetaInfo();
+
+    if (globalOffsets.length > 0) {
+        updateAllCharts();
+    }
+}
+
 const MARGIN_MAP = {
     0: { label: 'TooEarly', color: '#FF0000' },
     1: { label: 'VeryEarly', color: '#FF6F4E' },
@@ -120,19 +170,19 @@ function renderDistributionChart() {
     const distStatsContainer = document.getElementById('distributionStats');
     distStatsContainer.innerHTML = `
         <div class="dist-stat-item">
-            <div class="label">平均值 (μ)</div>
+            <div class="label">${t('mean')}</div>
             <div class="value" style="color: #ffffff;">${globalAvg.toFixed(2)} ms</div>
         </div>
         <div class="dist-stat-item">
-            <div class="label">标准差 (σ)</div>
+            <div class="label">${t('stdDev')}</div>
             <div class="value" style="color: #ffffff;">${globalStdDev.toFixed(2)} ms</div>
         </div>
         <div class="dist-stat-item">
-            <div class="label">偏度</div>
+            <div class="label">${t('skewness')}</div>
             <div class="value" style="color: #ffffff;" id="skewnessValue">-</div>
         </div>
         <div class="dist-stat-item">
-            <div class="label">峰度</div>
+            <div class="label">${t('kurtosis')}</div>
             <div class="value" style="color: #ffffff;" id="kurtosisValue">-</div>
         </div>
     `;
@@ -221,7 +271,7 @@ function renderDistributionChart() {
         data: {
             datasets: [
                 {
-                    label: '偏移量分布',
+                    label: t('offsetDist'),
                     data: histogramData.map(bin => ({ x: bin.center, y: bin.count })),
                     backgroundColor: 'rgba(76, 175, 80, 0.6)',
                     borderColor: 'rgba(76, 175, 80, 0.8)',
@@ -231,7 +281,7 @@ function renderDistributionChart() {
                     categoryPercentage: 1.0,
                 },
                 {
-                    label: '正态分布拟合',
+                    label: t('normalFit'),
                     data: normalCurveData,
                     type: 'line',
                     borderColor: '#ffb74d',
@@ -248,30 +298,23 @@ function renderDistributionChart() {
             maintainAspectRatio: false,
             animation: false,
             layout: {
-                padding: {
-                    top: 25,
-                    right: 15,
-                    bottom: 5,
-                    left: 15
-                }
+                padding: { top: 25, right: 15, bottom: 5, left: 15 }
             },
             scales: {
                 x: {
                     type: 'linear',
                     min: xMin,
                     max: xMax,
-                    title: { display: true, text: '偏移量 (ms)', color: '#aaa' },
+                    title: { display: true, text: t('offsetX'), color: '#aaa' },
                     grid: { color: '#252525' },
                     ticks: { 
                         color: '#bbb',
                         maxTicksLimit: 10,
-                        callback: function(value) {
-                            return value.toFixed(1);
-                        }
+                        callback: function(value) { return value.toFixed(1); }
                     }
                 },
                 y: {
-                    title: { display: true, text: '频次', color: '#aaa' },
+                    title: { display: true, text: t('frequency'), color: '#aaa' },
                     grid: { color: '#252525' },
                     ticks: { color: '#bbb' },
                     beginAtZero: true
@@ -286,16 +329,14 @@ function renderDistributionChart() {
                     callbacks: {
                         label: function(context) {
                             if (context.datasetIndex === 0) {
-                                return `频次: ${context.raw.y}`;
+                                return `${t('frequency')}: ${context.raw.y}`;
                             } else {
-                                return `正态拟合值: ${context.raw.y.toFixed(2)}`;
+                                return `${t('normalFitValue')}: ${context.raw.y.toFixed(2)}`;
                             }
                         }
                     }
                 },
-                annotation: {
-                    annotations: annotationsConfig
-                }
+                annotation: { annotations: annotationsConfig }
             }
         }
     });
@@ -390,12 +431,12 @@ function renderScatterChart() {
             spanGaps: true,
             scales: {
                 x: {
-                    title: { display: true, text: '按键', color: '#aaa' },
+                    title: { display: true, text: t('keyX'), color: '#aaa' },
                     grid: { color: '#252525' },
                     ticks: { color: '#bbb' }
                 },
                 y: {
-                    title: { display: true, text: '偏移量 (ms)', color: '#aaa' },
+                    title: { display: true, text: t('offsetX'), color: '#aaa' },
                     grid: { color: '#252525' },
                     ticks: { color: '#bbb' }
                 }
@@ -498,7 +539,6 @@ function calculateStaticStats() {
     let maxCombo = 0;
     let currentCombo = 0;
     globalOffsets.forEach(item => {
-      
         if (item[1] === 3 || item[1] === 12 || item[1] === 10) {
             currentCombo++;
             if (currentCombo > maxCombo) maxCombo = currentCombo;
@@ -587,7 +627,7 @@ function renderXaccChart() {
                             return '';
                         },
                         label: function(context) {
-                            return context.label + ': ' + context.raw.toFixed(3) + '%';
+                            return t('keyX') + ' ' + context.label + ': ' + context.raw.toFixed(3) + '%';
                         }
                     }
                 }
@@ -669,34 +709,24 @@ function clearData() {
     globalAvg = 0;
     globalStdDev = 0;
     globalCounts = {};
+    currentMetaData = null;
 
     for (let i = 0; i <= 12; i++) globalCounts[i] = 0;
 
     document.getElementById('statTotal').innerText = '-';
     document.getElementById('statMaxCombo').innerText = '-';
     document.getElementById('xaccValue').innerText = 'XACC: -';
-    document.getElementById('metaInfo').innerText = '等待导入...';
     document.getElementById('pureNumbersContainer').innerHTML = '';
     document.getElementById('distributionStats').innerHTML = '';
     document.getElementById('jsonFile').value = '';
     document.getElementById('statUR').innerText = '-';
 
-    if (myChart) {
-        myChart.destroy();
-        myChart = null;
-    }
-    if (xaccChart) {
-        xaccChart.destroy();
-        xaccChart = null;
-    }
-    if (distributionChart) {
-        distributionChart.destroy();
-        distributionChart = null;
-    }
-    if (pieChart) {
-        pieChart.destroy();
-        pieChart = null;
-    }
+    updateMetaInfo();
+
+    if (myChart) { myChart.destroy(); myChart = null; }
+    if (xaccChart) { xaccChart.destroy(); xaccChart = null; }
+    if (distributionChart) { distributionChart.destroy(); distributionChart = null; }
+    if (pieChart) { pieChart.destroy(); pieChart = null; }
 }
 
 document.getElementById('clearData').addEventListener('click', clearData);
@@ -717,7 +747,7 @@ document.getElementById('jsonFile').addEventListener('change', function(e) {
         try {
             const data = JSON.parse(evt.target.result);
             if (!data.offsets) {
-                alert("无效的 JSON 数据");
+                alert(t('invalidJson'));
                 return;
             }
             
@@ -735,26 +765,39 @@ document.getElementById('jsonFile').addEventListener('change', function(e) {
                 });
                 versionText = "1.7.0";
             } else {
-                alert("未识别的 offsets 数据格式！");
+                alert(t('unknownFormat'));
                 return;
             }
 
             globalOffsets = parsedOffsets;
-    
-            document.getElementById('metaInfo').innerHTML = `
-                <strong>Version:</strong> ${versionText || 'Unknown'}<br>
-                <strong>谱面歌名:</strong> ${data.songName || 'Unknown'}<br>
-                <strong>文件路径:</strong> ${data.levelPath || 'Unknown'}<br>
-                <strong>分析时间:</strong> ${data.timestamp ? new Date(data.timestamp * 1000).toLocaleString() : 'Unknown'}
-            `;
+            
+            currentMetaData = {
+                versionText: versionText,
+                songName: data.songName,
+                levelPath: data.levelPath,
+                timestamp: data.timestamp
+            };
 
+            updateMetaInfo();
             calculateStaticStats();
             updateAllCharts();
             
         } catch (err) {
-            alert("JSON 解析失败!");
+            alert(t('parseFailed'));
             console.error(err);
         }
     };
     reader.readAsText(file);
+});
+
+document.getElementById('langSelect').addEventListener('change', function(e) {
+    setLanguage(e.target.value);
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+    const langSelect = document.getElementById('langSelect');
+    if (langSelect) {
+        langSelect.value = currentLang;
+    }
+    setLanguage(currentLang); 
 });
