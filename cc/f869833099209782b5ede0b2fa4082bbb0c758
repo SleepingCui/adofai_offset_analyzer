@@ -1,0 +1,18 @@
+index.html
+  h_acd8c3a33a52ed 94-103,237,251,254-260,262,269,273,277,290,297,305,312,320,325
+i18n.js
+  h_acd8c3a33a52ed 1-51
+app.js
+  h_acd8c3a33a52ed 1-50,173,177,181,185,274,284,308,317,332,334,434,439,630,712,724-725,750,768,773-781,786,791-802
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "ccf869833099209782b5ede0b2fa4082bbb0c758",
+  "prompts": {},
+  "humans": {
+    "h_acd8c3a33a52ed": {
+      "author": "SleepingCui <130898297+SleepingCui@users.noreply.github.com>"
+    }
+  }
+}
