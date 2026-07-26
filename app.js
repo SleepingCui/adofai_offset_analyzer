@@ -738,8 +738,7 @@ function updateAllCharts() {
     renderPieChart();
 }
 
-document.getElementById('jsonFile').addEventListener('change', function(e) {
-    const file = e.target.files[0];
+function LoadJson(file) {
     if (!file) return;
 
     const reader = new FileReader();
@@ -788,10 +787,26 @@ document.getElementById('jsonFile').addEventListener('change', function(e) {
         }
     };
     reader.readAsText(file);
+}
+
+
+document.getElementById('jsonFile').addEventListener('change', function(e) {
+    LoadJson(e.target.files[0]);
 });
 
 document.getElementById('langSelect').addEventListener('change', function(e) {
     setLanguage(e.target.value);
+});
+
+['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+    document.body.addEventListener(eventName, e => e.preventDefault(), false);
+});
+
+document.body.addEventListener('drop', function(e) {
+    const dt = e.dataTransfer;
+    if (dt && dt.files && dt.files.length > 0) {
+        LoadJson(dt.files[0]);
+    }
 });
 
 document.addEventListener('DOMContentLoaded', () => {
