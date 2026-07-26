@@ -1,0 +1,14 @@
+app.js
+  h_acd8c3a33a52ed 741,790-794,801-811
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "363ed7ec6a1ee078420979f179f6f8cb4138f615",
+  "prompts": {},
+  "humans": {
+    "h_acd8c3a33a52ed": {
+      "author": "SleepingCui <130898297+SleepingCui@users.noreply.github.com>"
+    }
+  }
+}
