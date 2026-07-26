@@ -560,7 +560,7 @@ function renderXaccChart() {
         data: {
             labels: globalOffsets.map((_, i) => i + 1),
             datasets: [{
-                label: '累计 XACC (%)',
+                label: 'XACC (%)',
                 data: xaccData,
                 borderColor: '#4FC3F7',
                 borderWidth: 2,
@@ -583,6 +583,9 @@ function renderXaccChart() {
                     mode: 'index',
                     intersect: false, 
                     callbacks: {
+                        title: function() {
+                            return '';
+                        },
                         label: function(context) {
                             return context.label + ': ' + context.raw.toFixed(3) + '%';
                         }
@@ -590,8 +593,19 @@ function renderXaccChart() {
                 }
             },
             scales: {
-                y: { min: 0, max: 100, ticks: { color: '#bbb' } },
-                x: { ticks: { color: '#bbb' } }
+                y: { 
+                    ticks: { 
+                        color: '#bbb',
+                        callback: function(value) {
+                            return value.toFixed(2) + '%';
+                        }
+                    },
+                    grid: { color: '#252525' }
+                },
+                x: { 
+                    ticks: { color: '#bbb' },
+                    grid: { color: '#252525' }
+                }
             }
         }
     });
