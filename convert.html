@@ -4,24 +4,12 @@
     <meta charset="UTF-8">
     <title>tsmz2json</title>
     <style>
-        body {
+        /* body {
             font-family: Arial, sans-serif;
             max-width: 800px;
             margin: 50px auto;
             padding: 20px;
-        }
-        #dropZone {
-            border: 2px dashed #ccc;
-            border-radius: 10px;
-            padding: 40px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-        #dropZone:hover, #dropZone.drag-over {
-            border-color: #4CAF50;
-            background: #f0fff0;
-        }
+        } */
         #output {
             background: #f5f5f5;
             padding: 15px;
@@ -31,35 +19,16 @@
             max-height: 500px;
             overflow-y: auto;
         }
-        button {
-            margin-top: 10px;
-            padding: 10px 20px;
-            background: #4CAF50;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-        button:hover {
-            background: #45a049;
-        }
-        .error {
-            color: red;
-        }
     </style>
 </head>
 <body>
-    <h1>tsmz2json converter</h1>
+    <h1>tsmz2json</h1>
     
-    <div id="dropZone">
-        <p>拖拽 .tlog.gz 文件到此处，或点击选择文件</p>
-        <input type="file" id="fileInput" accept=".tlog.gz,.gz" style="display:none">
-    </div>
-    
+    <p>Drop a .tlog or .tlog.gz file here, or <button id="selectBtn" style="margin:0;padding:0;background:none;color:#0000ff;text-decoration:underline;cursor:pointer;font-size:inherit;">select a file</button></p>
+    <input type="file" id="fileInput" accept=".tlog,.tlog.gz,.gz" style="display:none">
     <div id="status"></div>
     <pre id="output" style="display:none"></pre>
-    <button id="downloadBtn" style="display:none">
-        下载 JSON</button>
+    <button id="downloadBtn" style="display:none">Download JSON</button>
 
     <script>
         function readString(view, offset) {
@@ -119,62 +88,52 @@
             const output = document.getElementById('output');
             const downloadBtn = document.getElementById('downloadBtn');
             
-            status.textContent = '正在解压...';
+            status.textContent = 'Processing...';
             status.className = '';
             
             try {
                 const arrayBuffer = await file.arrayBuffer();
-                const compressed = new Uint8Array(arrayBuffer);
+                let fileData = new Uint8Array(arrayBuffer);
                 
-                const blob = new Blob([compressed]);
-                const ds = new DecompressionStream('gzip');
-                const decompressedStream = blob.stream().pipeThrough(ds);
-                const decompressedBuffer = await new Response(decompressedStream).arrayBuffer();
+                const isGzip = file.name.toLowerCase().endsWith('.gz') || 
+                              (fileData.length > 2 && fileData[0] === 0x1F && fileData[1] === 0x8B);
                 
-                status.textContent = '正在解析...';
+                if (isGzip) {
+                    status.textContent = 'Decompressing...';
+                    const blob = new Blob([fileData]);
+                    const ds = new DecompressionStream('gzip');
+                    const decompressedStream = blob.stream().pipeThrough(ds);
+                    const decompressedBuffer = await new Response(decompressedStream).arrayBuffer();
+                    fileData = new Uint8Array(decompressedBuffer);
+                }
                 
-                const result = parseData(new Uint8Array(decompressedBuffer));
+                status.textContent = 'Parsing...';
+                
+                const result = parseData(fileData);
                 
                 const jsonString = JSON.stringify(result, null, 2);
                 output.textContent = jsonString;
                 output.style.display = 'block';
                 
-                status.textContent = `转换成功！共 ${result.offsets.length} 条记录`;
+                status.textContent = `Conversion successful! (${result.offsets.length} records)`;
                 status.className = 'success';
                 downloadBtn.style.display = 'inline';
                 
                 window._jsonResult = jsonString;
-                window._fileName = file.name.replace('.tlog.gz', '.json').replace('.gz', '.json');
+                window._fileName = file.name.replace('.tlog.gz', '.json').replace('.tlog', '.json').replace('.gz', '.json');
                 
             } catch (err) {
-                status.textContent = '错误: ' + err;
+                status.textContent = 'Error: ' + err;
                 status.className = 'error';
                 output.style.display = 'none';
                 downloadBtn.style.display = 'none';
             }
         }
 
-        const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
+        const selectBtn = document.getElementById('selectBtn');
 
-        dropZone.addEventListener('click', () => fileInput.click());
-
-        dropZone.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            dropZone.classList.add('drag-over');
-        });
-
-        dropZone.addEventListener('dragleave', () => {
-            dropZone.classList.remove('drag-over');
-        });
-
-        dropZone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            dropZone.classList.remove('drag-over');
-            
-            const file = e.dataTransfer.files[0];
-            if (file) handleFile(file);
-        });
+        selectBtn.addEventListener('click', () => fileInput.click());
 
         fileInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
@@ -193,6 +152,19 @@
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
+        });
+
+        document.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+        });
+
+        document.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const file = e.dataTransfer.files[0];
+            if (file) handleFile(file);
         });
     </script>
 </body>
