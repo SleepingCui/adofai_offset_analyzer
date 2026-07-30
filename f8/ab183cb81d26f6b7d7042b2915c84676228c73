@@ -1,0 +1,20 @@
+app.js
+  h_acd8c3a33a52ed 526-527,557-586,671,758,837-840
+i18n.js
+  h_acd8c3a33a52ed 17-18,34-35,51-52
+convert.html
+  h_acd8c3a33a52ed 23,131,133-136
+index.html
+  h_acd8c3a33a52ed 267,281-287,289,291
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "f8ab183cb81d26f6b7d7042b2915c84676228c73",
+  "prompts": {},
+  "humans": {
+    "h_acd8c3a33a52ed": {
+      "author": "SleepingCui <130898297+SleepingCui@users.noreply.github.com>"
+    }
+  }
+}
