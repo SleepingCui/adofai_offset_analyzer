@@ -523,6 +523,8 @@ function calculateStaticStats() {
         if (globalCounts[marginType] !== undefined) globalCounts[marginType]++;
     });
 
+    updateRatioDisplay();
+
     const failMissSum = globalCounts[8] + globalCounts[9]; 
     
     const judgementsArray = [
@@ -550,6 +552,38 @@ function calculateStaticStats() {
     document.getElementById('statTotal').innerText = totalHits.toLocaleString();
     document.getElementById('statMaxCombo').innerText = maxCombo.toString();
     document.getElementById('xaccValue').innerText = `XACC: ${(xacc * 100).toFixed(2)}%`;
+}
+
+function updateRatioDisplay() {
+    if (globalOffsets.length === 0) {
+        document.getElementById('statRatio').innerText = '-';
+        return;
+    }
+
+    const showXPerf = document.getElementById('toggleXPerfectRatio').checked;
+
+    const perfectCount = globalCounts[3] || 0;
+    const xPerfectCount = globalCounts[12] || 0;
+    const autoCount = globalCounts[10] || 0;
+
+    let numerator = 0; 
+    
+    if (showXPerf) {
+        numerator = xPerfectCount + autoCount;
+    } else {
+        numerator = perfectCount + xPerfectCount + autoCount;
+    }
+    const denominator = globalOffsets.length - numerator;
+
+    if (numerator === 0) {
+        document.getElementById('statRatio').innerText = '0:1';
+    } else if (denominator === 0) {
+        document.getElementById('statRatio').innerText = '∞:1';
+    } else {
+        const ratioVal = numerator / denominator;
+        const formattedVal = Number.isInteger(ratioVal) ? ratioVal.toString() : ratioVal.toFixed(2);
+        document.getElementById('statRatio').innerText = `${formattedVal}:1`;
+    }
 }
 
 function calcXACC(judgements) {
@@ -634,6 +668,7 @@ function renderXaccChart() {
             },
             scales: {
                 y: { 
+                    max: 100,
                     ticks: { 
                         color: '#bbb',
                         callback: function(value) {
@@ -720,6 +755,7 @@ function clearData() {
     document.getElementById('distributionStats').innerHTML = '';
     document.getElementById('jsonFile').value = '';
     document.getElementById('statUR').innerText = '-';
+    document.getElementById('statRatio').innerText = '-';
 
     updateMetaInfo();
 
@@ -796,6 +832,10 @@ document.getElementById('jsonFile').addEventListener('change', function(e) {
 
 document.getElementById('langSelect').addEventListener('change', function(e) {
     setLanguage(e.target.value);
+});
+
+document.getElementById('toggleXPerfectRatio').addEventListener('change', () => {
+    updateRatioDisplay();
 });
 
 ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {

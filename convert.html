@@ -4,12 +4,6 @@
     <meta charset="UTF-8">
     <title>tsmz2json</title>
     <style>
-        /* body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 50px auto;
-            padding: 20px;
-        } */
         #output {
             background: #f5f5f5;
             padding: 15px;
@@ -24,7 +18,10 @@
 <body>
     <h1>tsmz2json</h1>
     
-    <p>Drop a .tlog or .tlog.gz file here, or <button id="selectBtn" style="margin:0;padding:0;background:none;color:#0000ff;text-decoration:underline;cursor:pointer;font-size:inherit;">select a file</button></p>
+    <p>
+        Drop a .tlog or .tlog.gz file here, or 
+        <a href="#" id="selectLink">select a file</a>
+    </p>
     <input type="file" id="fileInput" accept=".tlog,.tlog.gz,.gz" style="display:none">
     <div id="status"></div>
     <pre id="output" style="display:none"></pre>
@@ -131,9 +128,12 @@
         }
 
         const fileInput = document.getElementById('fileInput');
-        const selectBtn = document.getElementById('selectBtn');
+        const selectLink = document.getElementById('selectLink');
 
-        selectBtn.addEventListener('click', () => fileInput.click());
+        selectLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            fileInput.click();
+        });
 
         fileInput.addEventListener('change', (e) => {
             const file = e.target.files[0];

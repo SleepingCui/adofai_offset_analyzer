@@ -264,6 +264,7 @@
         </div>
     </div>
 
+
     <div class="stats-grid">
         <div class="stats-card" style="border-left-color: #2196F3;">
             <h3 data-i18n="totalHits">总按键数</h3>
@@ -277,7 +278,17 @@
             <h3 data-i18n="ur">UR (不稳定度)</h3>
             <div class="value" id="statUR">-</div>
         </div>
-    </div>
+        <div class="stats-card" style="border-left-color: #60FF4E;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                <h3 id="ratioLabel" style="margin: 0;">Ratio</h3>
+                <label style="font-size: 0.75rem; color: #aaa; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                    <input type="checkbox" id="toggleXPerfectRatio" style="cursor: pointer;">
+                    <span data-i18n="xperfectRatio">XPerfect Ratio</span>
+                </label>
+            </div>
+            <div class="value" id="statRatio">-</div>
+        </div>
+</div>
 
     <div class="margin-counts-box" id="marginCountsBox">
         <div class="numbers-group" id="pureNumbersContainer">

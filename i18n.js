@@ -14,7 +14,8 @@ const I18N_STRINGS = {
         invalidJson: '无效的 JSON 数据',
         unknownFormat: '未识别的 offsets 数据格式！',
         parseFailed: 'JSON 解析失败!',
-        songName: '谱面歌名', levelPath: '文件路径', analysisTime: '分析时间'
+        songName: '谱面歌名', levelPath: '文件路径', analysisTime: '分析时间',
+        xperfectRatio: 'XPerfect Ratio'
     },
     en: {
         importJson: 'Import JSON', resetZoom: 'Reset Zoom', clear: 'Clear',
@@ -30,7 +31,8 @@ const I18N_STRINGS = {
         invalidJson: 'Invalid JSON data',
         unknownFormat: 'Unrecognized offsets data format!',
         parseFailed: 'JSON parsing failed!',
-        songName: 'Song Name', levelPath: 'Level Path', analysisTime: 'Analysis Time'
+        songName: 'Song Name', levelPath: 'Level Path', analysisTime: 'Analysis Time',
+        xperfectRatio: 'XPerfect Ratio' 
     },
     kr: {
         importJson: 'JSON 가져오기', resetZoom: '줌 초기화', clear: '비우기',
@@ -46,6 +48,7 @@ const I18N_STRINGS = {
         invalidJson: '잘못된 JSON 데이터',
         unknownFormat: '인식할 수 없는 offsets 데이터 형식입니다!',
         parseFailed: 'JSON 파싱 실패!',
-        songName: '곡 이름', levelPath: '파일 경로', analysisTime: '분석 시간'
+        songName: '곡 이름', levelPath: '파일 경로', analysisTime: '분석 시간',
+        xperfectRatio: 'XPerfect Ratio' 
     }
 };
