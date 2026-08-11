@@ -1,0 +1,14 @@
+convert.html
+  h_acd8c3a33a52ed 6,101-106
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "ee20a2b960f685156a2c97066bd96ccba6ed4f9d",
+  "prompts": {},
+  "humans": {
+    "h_acd8c3a33a52ed": {
+      "author": "SleepingCui <130898297+SleepingCui@users.noreply.github.com>"
+    }
+  }
+}
