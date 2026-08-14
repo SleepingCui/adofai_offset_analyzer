@@ -29,145 +29,207 @@
     <button id="downloadBtn" style="display:none">Download JSON</button>
 
     <script>
-        function readString(view, offset) {
-            let length = 0;
-            let shift = 0;
-            
-            do {
-                const b = view[offset++];
-                length |= (b & 0x7F) << shift;
-                shift += 7;
-            } while (view[offset - 1] & 0x80);
-            
-            const str = new TextDecoder().decode(
-                new Uint8Array(view.buffer, view.byteOffset + offset, length)
-            );
-            return { str, newOffset: offset + length };
+    function readString(view, offset) {
+        let length = 0;
+        let shift = 0;
+        
+        do {
+            const b = view[offset++];
+            length |= (b & 0x7F) << shift;
+            shift += 7;
+        } while (view[offset - 1] & 0x80);
+        
+        const str = new TextDecoder().decode(
+            new Uint8Array(view.buffer, view.byteOffset + offset, length)
+        );
+        return { str, newOffset: offset + length };
+    }
+
+    //v1 (1.8.2-)
+    function parseV1(view, offset) {
+        const dv = new DataView(view.buffer, view.byteOffset);
+        const offsets = [];
+        
+        while (offset + 12 <= view.byteLength) {
+            const timing = dv.getFloat64(offset, true);
+            const marginCode = dv.getInt32(offset + 8, true);
+            offsets.push([Math.round(timing * 10000) / 10000, marginCode]);
+            offset += 12;
         }
+        
+        return offsets;
+    }
 
-        function parseData(decompressed) {
-            let offset = 0;
-            const view = new Uint8Array(decompressed);
-            const dv = new DataView(decompressed.buffer, decompressed.byteOffset);
-
-            const magic = new TextDecoder().decode(view.slice(offset, offset + 4));
-            if (magic !== 'TSMZ') {
-                throw new Error('Invalid file format: expected TSMZ, got ' + magic);
-            }
-            offset += 4;
-
-            const version = view[offset++];
-
-            const timestamp = dv.getBigInt64(offset, true);
-            offset += 8;
-
-            const { str: songName, newOffset: o1 } = readString(view, offset);
-            const { str: levelPath, newOffset: o2 } = readString(view, o1);
-            offset = o2;
-
-            const offsets = [];
-            while (offset + 12 <= view.byteLength) {
-                const timing = dv.getFloat64(offset, true);
-                const marginCode = dv.getInt32(offset + 8, true);
-                offsets.push([Math.round(timing * 10000) / 10000, marginCode]);
-                offset += 12;
-            }
-
-            return {
-                songName: songName || '',
-                levelPath: levelPath || '',
-                timestamp: Number(timestamp),
-                offsets: offsets
-            };
-        }
-
-        async function handleFile(file) {
-            const status = document.getElementById('status');
-            const output = document.getElementById('output');
-            const downloadBtn = document.getElementById('downloadBtn');
-            
-            status.textContent = 'Processing...';
-            status.className = '';
-            
+    //v2 (1.9.0+)
+    function parseV2(view, offset) {
+        const dv = new DataView(view.buffer, view.byteOffset);
+        const offsets = [];
+        let prevTimingBits = 0n;
+        
+        while (offset < view.byteLength) {
             try {
-                const arrayBuffer = await file.arrayBuffer();
-                let fileData = new Uint8Array(arrayBuffer);
+                if (offset + 8 > view.byteLength) break;
+                const xorBits = dv.getBigInt64(offset, true);
+                offset += 8;
+
+                const actualBits = xorBits ^ prevTimingBits;
+                prevTimingBits = actualBits;
                 
-                const isGzip = file.name.toLowerCase().endsWith('.gz') || 
-                              (fileData.length > 2 && fileData[0] === 0x1F && fileData[1] === 0x8B);
+                const buffer = new ArrayBuffer(8);
+                const view64 = new DataView(buffer);
+                view64.setBigInt64(0, actualBits, true);
+                const timing = view64.getFloat64(0, true);
                 
-                if (isGzip) {
-                    status.textContent = 'Decompressing...';
-                    
-                    try {
-                        fileData = pako.ungzip(fileData);
-                    } catch (e) {
-                        throw new Error('Failed to decompress gzip file: ' + e.message);
+                let marginCode = 0;
+                let shift = 0;
+                let byte;
+                let bytesRead = 0;
+                do {
+                    if (offset >= view.byteLength) {
+                        throw new Error('Unexpected EOF while reading VLQ');
                     }
-                }
+                    byte = view[offset++];
+                    bytesRead++;
+                    marginCode |= (byte & 0x7F) << shift;
+                    shift += 7;
+                    if (bytesRead > 5) {
+                        throw new Error('VLQ exceeds maximum 5 bytes');
+                    }
+                } while (byte & 0x80);
                 
-                status.textContent = 'Parsing...';
+                offsets.push([Math.round(timing * 10000) / 10000, marginCode]);
                 
-                const result = parseData(fileData);
-                
-                const jsonString = JSON.stringify(result, null, 2);
-                output.textContent = jsonString;
-                output.style.display = 'block';
-                
-                status.textContent = `Conversion successful! (${result.offsets.length} records)`;
-                status.className = 'success';
-                downloadBtn.style.display = 'inline';
-                
-                window._jsonResult = jsonString;
-                window._fileName = file.name.replace('.tlog.gz', '.json').replace('.tlog', '.json').replace('.gz', '.json');
-                
-            } catch (err) {
-                status.textContent = 'Error: ' + err;
-                status.className = 'error';
-                output.style.display = 'none';
-                downloadBtn.style.display = 'none';
+            } catch (e) {
+                console.warn('Error parsing at offset', offset, ':', e.message);
+                break;
             }
         }
+        
+        return offsets;
+    }
 
-        const fileInput = document.getElementById('fileInput');
-        const selectLink = document.getElementById('selectLink');
 
-        selectLink.addEventListener('click', (e) => {
-            e.preventDefault();
-            fileInput.click();
-        });
+    function parseData(decompressed) {
+        const view = new Uint8Array(decompressed);
+        const dv = new DataView(decompressed.buffer, decompressed.byteOffset);
+        let offset = 0;
+        
+        const magic = new TextDecoder().decode(view.slice(offset, offset + 4));
+        if (magic !== 'TSMZ') {
+            throw new Error('Invalid file format: ' + magic);
+        }
+        offset += 4;
+        
+        const version = view[offset++];
+        const timestamp = dv.getBigInt64(offset, true);
+        offset += 8;
+        const { str: songName, newOffset: o1 } = readString(view, offset);
+        const { str: levelPath, newOffset: o2 } = readString(view, o1);
+        offset = o2;
+        
+        let offsets;
+        if (version === 1) {
+            offsets = parseV1(view, offset);
+        } else if (version === 2) {
+            offsets = parseV2(view, offset);
+        } else {
+            throw new Error(`Unsupported version: ${version}`);
+        }
+        
+        return {
+            songName: songName || '',
+            levelPath: levelPath || '',
+            timestamp: Number(timestamp),
+            version: version,
+            offsets: offsets
+        };
+    }
 
-        fileInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (file) handleFile(file);
-        });
-
-        document.getElementById('downloadBtn').addEventListener('click', () => {
-            if (!window._jsonResult) return;
+    async function handleFile(file) {
+        const status = document.getElementById('status');
+        const output = document.getElementById('output');
+        const downloadBtn = document.getElementById('downloadBtn');
+        
+        status.textContent = 'Processing...';
+        status.className = '';
+        
+        try {
+            const arrayBuffer = await file.arrayBuffer();
+            let fileData = new Uint8Array(arrayBuffer);
             
-            const blob = new Blob([window._jsonResult], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = window._fileName || 'output.json';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        });
-
-        document.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-        });
-
-        document.addEventListener('drop', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
+            const isGzip = file.name.toLowerCase().endsWith('.gz') || 
+                          (fileData.length > 2 && fileData[0] === 0x1F && fileData[1] === 0x8B);
             
-            const file = e.dataTransfer.files[0];
-            if (file) handleFile(file);
-        });
-    </script>
+            if (isGzip) {
+                status.textContent = 'Decompressing...';
+                
+                try {
+                    fileData = pako.ungzip(fileData);
+                } catch (e) {
+                    throw new Error('Failed to decompress gzip file: ' + e.message);
+                }
+            }
+            
+            status.textContent = 'Parsing...';
+            
+            const result = parseData(fileData);
+            const versionInfo = result.version === 1 ? 'v1' : 'v2';
+            const jsonString = JSON.stringify(result, null, 2);
+            output.textContent = jsonString;
+            output.style.display = 'block';
+            status.textContent = `Conversion successful! (${result.offsets.length} records, ${versionInfo})`;
+            status.className = 'success';
+            downloadBtn.style.display = 'inline';
+            window._jsonResult = jsonString;
+            window._fileName = file.name.replace('.tlog.gz', '.json').replace('.tlog', '.json').replace('.gz', '.json');
+            
+        } catch (err) {
+            status.textContent = 'Error: ' + err.message;
+            status.className = 'error';
+            output.style.display = 'none';
+            downloadBtn.style.display = 'none';
+        }
+    }
+
+    const fileInput = document.getElementById('fileInput');
+    const selectLink = document.getElementById('selectLink');
+
+    selectLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        fileInput.click();
+    });
+
+    fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) handleFile(file);
+    });
+
+    document.getElementById('downloadBtn').addEventListener('click', () => {
+        if (!window._jsonResult) return;
+        
+        const blob = new Blob([window._jsonResult], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = window._fileName || 'output.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    });
+
+    document.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    });
+
+    document.addEventListener('drop', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const file = e.dataTransfer.files[0];
+        if (file) handleFile(file);
+    });
+</script>
 </body>
 </html>
