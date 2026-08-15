@@ -9,6 +9,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.2.0/dist/chartjs-plugin-zoom.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-matrix@2.0.1/dist/chartjs-chart-matrix.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
     
     <style>
         :root {
@@ -248,8 +249,8 @@
     <div class="header-panel">
         <div class="button-group">
             <div class="file-input-wrapper">
-                <button class="btn" data-i18n="importJson">导入 JSON</button>
-                <input type="file" id="jsonFile" accept=".json">
+                <button class="btn" data-i18n="importFile">导入文件</button>
+                <input type="file" id="jsonFile" accept=".json,.tlog,.tlog.gz,.gz">
             </div>
             <button class="btn btn-reset" id="resetZoom" data-i18n="resetZoom">重置缩放</button>
             <button class="btn btn-clear" id="clearData" data-i18n="clear">清空</button>

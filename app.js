@@ -826,8 +826,177 @@ function LoadJson(file) {
 }
 
 
+function readString(view, offset) {
+    let length = 0;
+    let shift = 0;
+    do {
+        const b = view[offset++];
+        length |= (b & 0x7F) << shift;
+        shift += 7;
+    } while (view[offset - 1] & 0x80);
+    
+    const str = new TextDecoder().decode(
+        new Uint8Array(view.buffer, view.byteOffset + offset, length)
+    );
+    return { str, newOffset: offset + length };
+}
+
+function parseV1(view, offset) {
+    const dv = new DataView(view.buffer, view.byteOffset);
+    const offsets = [];
+    while (offset + 12 <= view.byteLength) {
+        const timing = dv.getFloat64(offset, true);
+        const marginCode = dv.getInt32(offset + 8, true);
+        offsets.push([Math.round(timing * 10000) / 10000, marginCode]);
+        offset += 12;
+    }
+    return offsets;
+}
+
+function parseV2(view, offset) {
+    const dv = new DataView(view.buffer, view.byteOffset);
+    const offsets = [];
+    let prevTimingBits = 0n;
+    while (offset < view.byteLength) {
+        try {
+            if (offset + 8 > view.byteLength) break;
+            const xorBits = dv.getBigInt64(offset, true);
+            offset += 8;
+
+            const actualBits = xorBits ^ prevTimingBits;
+            prevTimingBits = actualBits;
+            
+            const buffer = new ArrayBuffer(8);
+            const view64 = new DataView(buffer);
+            view64.setBigInt64(0, actualBits, true);
+            const timing = view64.getFloat64(0, true);
+            
+            let marginCode = 0;
+            let shift = 0;
+            let byte;
+            let bytesRead = 0;
+            do {
+                if (offset >= view.byteLength) throw new Error('Unexpected EOF while reading VLQ');
+                byte = view[offset++];
+                bytesRead++;
+                marginCode |= (byte & 0x7F) << shift;
+                shift += 7;
+                if (bytesRead > 5) throw new Error('VLQ exceeds maximum 5 bytes');
+            } while (byte & 0x80);
+            
+            offsets.push([Math.round(timing * 10000) / 10000, marginCode]);
+        } catch (e) {
+            console.warn('Error parsing at offset', offset, ':', e.message);
+            break;
+        }
+    }
+    return offsets;
+}
+
+function parseTlogData(decompressed) {
+    const view = new Uint8Array(decompressed);
+    const dv = new DataView(decompressed.buffer, decompressed.byteOffset);
+    let offset = 0;
+    
+    const magic = new TextDecoder().decode(view.slice(offset, offset + 4));
+    if (magic !== 'TSMZ') {
+        throw new Error('Invalid file format magic: ' + magic);
+    }
+    offset += 4;
+    
+    const version = view[offset++];
+    const timestamp = dv.getBigInt64(offset, true);
+    offset += 8;
+    const { str: songName, newOffset: o1 } = readString(view, offset);
+    const { str: levelPath, newOffset: o2 } = readString(view, o1);
+    offset = o2;
+    
+    let offsets;
+    if (version === 1) offsets = parseV1(view, offset);
+    else if (version === 2) offsets = parseV2(view, offset);
+    else throw new Error(`Unsupported tlog version: ${version}`);
+    
+    return {
+        songName: songName || '',
+        levelPath: levelPath || '',
+        timestamp: Number(timestamp),
+        versionText: version === 1 ? '1.8.2- (v1)' : '1.9.0+ (v2)',
+        offsets: offsets
+    };
+}
+
+async function LoadFile(file) {
+    if (!file) return;
+
+    try {
+        const fileName = file.name.toLowerCase();
+        let data = null;
+
+        if (fileName.endsWith('.json')) {
+            const text = await file.text();
+            const parsed = JSON.parse(text);
+            
+            if (!parsed.offsets) {
+                alert(t('invalidJson'));
+                return;
+            }
+
+            let parsedOffsets = [];
+            let versionText = "Unknown";
+
+            if (Array.isArray(parsed.offsets)) {
+                parsedOffsets = parsed.offsets;
+                versionText = "1.7.1+";
+            } else if (typeof parsed.offsets === 'object' && parsed.offsets !== null) {
+                const sortedKeys = Object.keys(parsed.offsets).sort((a, b) => parseInt(a) - parseInt(b));
+                parsedOffsets = sortedKeys.map(key => [parsed.offsets[key].v, parsed.offsets[key].j]);
+                versionText = "1.7.0";
+            } else {
+                alert(t('unknownFormat'));
+                return;
+            }
+
+            data = {
+                offsets: parsedOffsets,
+                versionText: versionText,
+                songName: parsed.songName,
+                levelPath: parsed.levelPath,
+                timestamp: parsed.timestamp
+            };
+        } else {
+            const arrayBuffer = await file.arrayBuffer();
+            let fileData = new Uint8Array(arrayBuffer);
+            const isGzip = fileName.endsWith('.gz') || (fileData.length > 2 && fileData[0] === 0x1F && fileData[1] === 0x8B);
+            if (isGzip) {
+                if (typeof pako === 'undefined') {
+                    throw new Error('pako library is not loaded!');
+                }
+                fileData = pako.ungzip(fileData);
+            }
+
+            data = parseTlogData(fileData);
+        }
+
+        globalOffsets = data.offsets;
+        currentMetaData = {
+            versionText: data.versionText,
+            songName: data.songName,
+            levelPath: data.levelPath,
+            timestamp: data.timestamp
+        };
+
+        updateMetaInfo();
+        calculateStaticStats();
+        updateAllCharts();
+
+    } catch (err) {
+        alert(t('parseFailed') + '\n' + err.message);
+        console.error(err);
+    }
+}
+
 document.getElementById('jsonFile').addEventListener('change', function(e) {
-    LoadJson(e.target.files[0]);
+    LoadFile(e.target.files[0]);
 });
 
 document.getElementById('langSelect').addEventListener('change', function(e) {
@@ -845,7 +1014,7 @@ document.getElementById('toggleXPerfectRatio').addEventListener('change', () => 
 document.body.addEventListener('drop', function(e) {
     const dt = e.dataTransfer;
     if (dt && dt.files && dt.files.length > 0) {
-        LoadJson(dt.files[0]);
+        LoadFile(dt.files[0]);
     }
 });
 
