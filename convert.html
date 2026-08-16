@@ -126,21 +126,34 @@
         const { str: songName, newOffset: o1 } = readString(view, offset);
         const { str: levelPath, newOffset: o2 } = readString(view, o1);
         offset = o2;
-        
+        let bpm = null, speed = null, pitch = null, isAngle = false;
+        if (version >= 4) {
+            bpm = dv.getFloat64(offset, true); offset += 8;
+            speed = dv.getFloat64(offset, true); offset += 8;
+            pitch = dv.getFloat64(offset, true); offset += 8;
+            isAngle = view[offset++] === 1;
+        } else if (version === 3) {
+            isAngle = view[offset++] === 1;
+        }
+
         let offsets;
         if (version === 1) {
             offsets = parseV1(view, offset);
-        } else if (version === 2) {
+        } else if (version >= 2) {
             offsets = parseV2(view, offset);
         } else {
             throw new Error(`Unsupported version: ${version}`);
         }
-        
+
         return {
             songName: songName || '',
             levelPath: levelPath || '',
             timestamp: Number(timestamp),
             version: version,
+            bpm: bpm,
+            speed: speed,
+            pitch: pitch,
+            isAngle: isAngle,
             offsets: offsets
         };
     }
@@ -173,7 +186,7 @@
             status.textContent = 'Parsing...';
             
             const result = parseData(fileData);
-            const versionInfo = result.version === 1 ? 'v1' : 'v2';
+            const versionInfo = 'v' + result.version;
             const jsonString = JSON.stringify(result, null, 2);
             output.textContent = jsonString;
             output.style.display = 'block';

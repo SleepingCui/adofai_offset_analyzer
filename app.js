@@ -774,6 +774,20 @@ function updateAllCharts() {
     renderPieChart();
 }
 
+function convertToMs(offsets, isAngle, bpm, speed, pitch) {
+    if (!isAngle) return offsets;
+
+    if (typeof bpm !== 'number' || typeof speed !== 'number' || typeof pitch !== 'number' ||
+        !isFinite(bpm) || !isFinite(speed) || !isFinite(pitch) ||
+        bpm * speed * pitch === 0) {
+        console.warn('isAngle=true but bpm/speed/pitch missing or invalid, values left as-is');
+        return offsets;
+    }
+
+    const factor = 1000 / (3 * bpm * speed * pitch);
+    return offsets.map(item => [Math.round(Number(item[0]) * factor * 10000) / 10000, item[1]]);
+}
+
 function LoadJson(file) {
     if (!file) return;
 
@@ -804,8 +818,8 @@ function LoadJson(file) {
                 return;
             }
 
+            parsedOffsets = convertToMs(parsedOffsets, data.isAngle === true, data.bpm, data.speed, data.pitch);
             globalOffsets = parsedOffsets;
-            
             currentMetaData = {
                 versionText: versionText,
                 songName: data.songName,
@@ -910,17 +924,29 @@ function parseTlogData(decompressed) {
     const { str: songName, newOffset: o1 } = readString(view, offset);
     const { str: levelPath, newOffset: o2 } = readString(view, o1);
     offset = o2;
-    
+
+    let bpm = null, speed = null, pitch = null, isAngle = false;
+    if (version >= 4) {
+        bpm = dv.getFloat64(offset, true); offset += 8;
+        speed = dv.getFloat64(offset, true); offset += 8;
+        pitch = dv.getFloat64(offset, true); offset += 8;
+        isAngle = view[offset++] === 1;
+    } else if (version === 3) {
+        isAngle = view[offset++] === 1;
+    }
+
     let offsets;
     if (version === 1) offsets = parseV1(view, offset);
-    else if (version === 2) offsets = parseV2(view, offset);
+    else if (version >= 2) offsets = parseV2(view, offset);
     else throw new Error(`Unsupported tlog version: ${version}`);
-    
+
+    offsets = convertToMs(offsets, isAngle, bpm, speed, pitch);
+
     return {
         songName: songName || '',
         levelPath: levelPath || '',
         timestamp: Number(timestamp),
-        versionText: version === 1 ? '1.8.2- (v1)' : '1.9.0+ (v2)',
+        versionText: version === 1 ? '1.8.2- (v1)' : `1.9.0+ (v${version})`,
         offsets: offsets
     };
 }
@@ -955,6 +981,8 @@ async function LoadFile(file) {
                 alert(t('unknownFormat'));
                 return;
             }
+
+            parsedOffsets = convertToMs(parsedOffsets, parsed.isAngle === true, parsed.bpm, parsed.speed, parsed.pitch);
 
             data = {
                 offsets: parsedOffsets,
