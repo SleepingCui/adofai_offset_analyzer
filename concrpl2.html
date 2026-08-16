@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>creplay2timingshow</title>
+    <style>
+        #output {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+            white-space: pre-wrap;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>creplay2timingshow</h1>
+    
+    <p>
+        Drop a .crpl2 file here, or 
+        <a href="#" id="select-link">select a file</a>
+    </p>
+    <input type="file" id="file-input" accept=".crpl2,.json" style="display:none">
+    <div id="status"></div>
+    <pre id="output" style="display:none"></pre>
+    <button id="download-btn" style="display:none">Download JSON</button>
+
+<script src="concrpl2.js"></script>
+<script>
+const fileInput = document.getElementById('file-input');
+const selectLink = document.getElementById('select-link');
+const status = document.getElementById('status');
+const output = document.getElementById('output');
+const downloadBtn = document.getElementById('download-btn');
+
+selectLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    fileInput.click();
+});
+
+fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) handleFile(file);
+});
+
+document.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+});
+
+document.addEventListener('drop', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+});
+
+downloadBtn.addEventListener('click', () => {
+    if (!window._jsonResult) return;
+    
+    const blob = new Blob([window._jsonResult], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = window._fileName || 'output.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+});
+
+
+async function handleFile(file) {
+    status.textContent = 'Processing...';
+    status.className = '';
+
+    try {
+        const buffer = await file.arrayBuffer();
+        const { json, meta } = await Crpl2.toTimingshow(buffer, file.name);
+
+        output.textContent = json;
+        output.style.display = 'block';
+        status.textContent = `Success.(${meta.count} hits, ${meta.songName})`;
+        status.className = 'success';
+        downloadBtn.style.display = 'inline';
+        window._jsonResult = json;
+        window._fileName = file.name.replace(/\.(crpl2|json)$/i, "") + "_timing.json";
+
+    } catch (err) {
+        status.textContent = 'Error: ' + err.message;
+        status.className = 'error';
+        output.style.display = 'none';
+        downloadBtn.style.display = 'none';
+    }
+}
+</script>
+
+</body>
+</html>

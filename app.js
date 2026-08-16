@@ -963,6 +963,21 @@ async function LoadFile(file) {
                 levelPath: parsed.levelPath,
                 timestamp: parsed.timestamp
             };
+        } else if (fileName.endsWith('.crpl2')) {
+            if (typeof Crpl2 === 'undefined') {
+                throw new Error('concrpl2.js library is not loaded!');
+            }
+            const arrayBuffer = await file.arrayBuffer();
+            const { json } = await Crpl2.toTimingshow(arrayBuffer, file.name);
+            const parsed = JSON.parse(json);
+
+            data = {
+                offsets: parsed.offsets,
+                versionText: 'CRPL2',
+                songName: parsed.songName,
+                levelPath: parsed.levelPath,
+                timestamp: parsed.timestamp / 1000
+            };
         } else {
             const arrayBuffer = await file.arrayBuffer();
             let fileData = new Uint8Array(arrayBuffer);
