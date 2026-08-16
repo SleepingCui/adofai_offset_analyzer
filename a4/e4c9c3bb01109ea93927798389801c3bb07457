@@ -1,0 +1,30 @@
+convert.html
+  s_0fa4c869bedc6e::t_26a9ab029a3446 129-138,142,147,153-156
+  s_0fa4c869bedc6e::t_a6719bfa5f51ab 189
+app.js
+  s_0fa4c869bedc6e::t_e6dfb5dc3d2e7e 777-790
+  s_0fa4c869bedc6e::t_ba803a94d1c8a6 985-986
+  s_0fa4c869bedc6e::t_8d16af678602ad 821
+  s_0fa4c869bedc6e::t_4655e879a5d4cf 927-937,940,942-944,949
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "a4e4c9c3bb01109ea93927798389801c3bb07457",
+  "prompts": {},
+  "humans": {
+    "h_acd8c3a33a52ed": {
+      "author": "SleepingCui <130898297+SleepingCui@users.noreply.github.com>"
+    }
+  },
+  "sessions": {
+    "s_0fa4c869bedc6e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3868bb41-600c-4a8f-bafe-a6851e3ad732",
+        "model": "deepseek-v4-pro"
+      },
+      "human_author": "SleepingCui <130898297+SleepingCui@users.noreply.github.com>"
+    }
+  }
+}
