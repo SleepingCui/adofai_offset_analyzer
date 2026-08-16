@@ -1,0 +1,36 @@
+app.js
+  s_1282b2c8ce8443::t_970198c275d844 966-980
+concrpl2.html
+  s_1282b2c8ce8443::t_c4867a05178e6e 32
+  s_1282b2c8ce8443::t_92af2d778bcd79 80-92
+  s_1282b2c8ce8443::t_2efce3b299fb24 29-31
+  s_1282b2c8ce8443::t_c1929398140814 33-35,77-79
+  s_1282b2c8ce8443::t_ce35ae9ae8e796 93-95
+  s_1282b2c8ce8443::t_f8b78e23b2bb71 1-28,36-76,96-103
+index.html
+  s_1282b2c8ce8443::t_f8057333fa7184 338
+  s_1282b2c8ce8443::t_de56508667fd0d 253
+concrpl2.js
+  s_1282b2c8ce8443::t_a0911f0842f8af 1-271
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "53af481639e67b7c24e64128e27d0c4da8e7542a",
+  "prompts": {},
+  "humans": {
+    "h_acd8c3a33a52ed": {
+      "author": "SleepingCui <130898297+SleepingCui@users.noreply.github.com>"
+    }
+  },
+  "sessions": {
+    "s_1282b2c8ce8443": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "039b8ae1-958e-4084-9b1e-5d6f365a154a",
+        "model": "deepseek-v4-flash"
+      },
+      "human_author": "SleepingCui <130898297+SleepingCui@users.noreply.github.com>"
+    }
+  }
+}
