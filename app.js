@@ -380,8 +380,14 @@ function renderScatterChart() {
         const item = globalOffsets[index];
         const yOffset = item[0];
         const marginType = item[1];
+        const rawAngle = item[2]; 
+
         if (datasetsMap[marginType]) {
-            datasetsMap[marginType].data.push({ x: index + 1, y: yOffset });
+            datasetsMap[marginType].data.push({ 
+                x: index + 1, 
+                y: yOffset,
+                angle: rawAngle 
+            });
         }
     }
 
@@ -449,7 +455,13 @@ function renderScatterChart() {
                 tooltip: {
                     callbacks: {
                         label: function(context) {
-                            return `${context.raw.x}: ${context.raw.y.toFixed(4)} ms (${context.dataset.label})`;
+                            const point = context.raw;
+                            let text = `${point.x}: ${point.y.toFixed(4)} ms`;
+                            if (point.angle !== undefined && point.angle !== null) {
+                                text += ` (${point.angle.toFixed(2)}°)`;
+                            }
+                            
+                            return `${text} (${context.dataset.label})`;
                         }
                     }
                 },
@@ -785,7 +797,11 @@ function convertToMs(offsets, isAngle, bpm, speed, pitch) {
     }
 
     const factor = 1000 / (3 * bpm * speed * pitch);
-    return offsets.map(item => [Math.round(Number(item[0]) * factor * 10000) / 10000, item[1]]);
+    return offsets.map(item => {
+        const rawAngle = Number(item[0]);
+        const ms = Math.round(rawAngle * factor * 10000) / 10000;
+        return [ms, item[1], rawAngle];
+    });
 }
 
 function LoadJson(file) {
