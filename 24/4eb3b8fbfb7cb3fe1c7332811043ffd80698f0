@@ -1,0 +1,25 @@
+app.js
+  h_acd8c3a33a52ed 383-384,388-389,458-464,800-804
+  s_0fa4c869bedc6e::t_e8e50e73c8e42b 386-387,390,1086
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "244eb3b8fbfb7cb3fe1c7332811043ffd80698f0",
+  "prompts": {},
+  "humans": {
+    "h_acd8c3a33a52ed": {
+      "author": "SleepingCui <130898297+SleepingCui@users.noreply.github.com>"
+    }
+  },
+  "sessions": {
+    "s_0fa4c869bedc6e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3868bb41-600c-4a8f-bafe-a6851e3ad732",
+        "model": "unknown"
+      },
+      "human_author": "SleepingCui <130898297+SleepingCui@users.noreply.github.com>"
+    }
+  }
+}
