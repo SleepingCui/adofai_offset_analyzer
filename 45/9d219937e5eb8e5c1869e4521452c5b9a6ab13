@@ -1,0 +1,41 @@
+index.html
+  h_acd8c3a33a52ed 180,189-249,251,304-305,342,368-382,384-386
+  s_1282b2c8ce8443::t_ab4b54537e9285 306,356,383
+i18n.js
+  h_acd8c3a33a52ed 17-21,38-42,59-63
+app.js
+  h_acd8c3a33a52ed 13-15,21-24,97-113,144,172,199,203,246,333,373-382,414,418,420-424,426-427,432,437-446,455-461,495-499,507,521,543,559,577-583,589-590,593,827-832,834-843,873-874,982-983,1019,1023-1024,1035,1039-1040,1061-1062,1075-1103
+  s_0fa4c869bedc6e::t_7ad44617700b2c 415,425,591-592,833,1104
+concrpl2.js
+  h_acd8c3a33a52ed 229
+  s_1282b2c8ce8443::t_a6f1b64ca94c4a 220,260
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "459d219937e5eb8e5c1869e4521452c5b9a6ab13",
+  "prompts": {},
+  "humans": {
+    "h_acd8c3a33a52ed": {
+      "author": "SleepingCui <130898297+SleepingCui@users.noreply.github.com>"
+    }
+  },
+  "sessions": {
+    "s_0fa4c869bedc6e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3868bb41-600c-4a8f-bafe-a6851e3ad732",
+        "model": "unknown"
+      },
+      "human_author": "SleepingCui <130898297+SleepingCui@users.noreply.github.com>"
+    },
+    "s_1282b2c8ce8443": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "039b8ae1-958e-4084-9b1e-5d6f365a154a",
+        "model": "unknown"
+      },
+      "human_author": "SleepingCui <130898297+SleepingCui@users.noreply.github.com>"
+    }
+  }
+}
