@@ -185,7 +185,6 @@
         };
     }
 
-
     async function decryptCrp2(arrayBuffer) {
         const data = new Uint8Array(arrayBuffer);
         if (data.length < 8) throw new Error("File too short");
@@ -199,11 +198,6 @@
         const plaintext = await crypto.subtle.decrypt({ name: "AES-CBC", iv: ivBytes }, cryptoKey, ciphertext);
 
         return parseCreplay(unpadPkcs7(new Uint8Array(plaintext)).buffer);
-    }
-
-
-    function angleToOffsetMs(angle, bpm) {
-        return bpm && bpm > 0 ? angle * (60000 / (bpm * 2 * Math.PI)) : 0;
     }
 
     function convertToTimingshow(data, filename) {
@@ -223,7 +217,7 @@
         timestamp = timestamp || Date.now();
 
         const offsets = angles.map(a => [
-            parseFloat(angleToOffsetMs(a, bpm).toFixed(4)),
+            parseFloat(a.toFixed(4)),
             3
         ]);
 
@@ -232,6 +226,7 @@
             levelPath: s.level_path || "",
             timestamp: timestamp,
             version: 2,
+            isAngle: true, 
             offsets: offsets
         }, null, 2);
 
@@ -245,12 +240,6 @@
         };
     }
 
-    /**
-     * 统一入口：根据文件内容自动识别 CRP2 二进制或 JSON 并转换为 timingshow 格式。
-     * @param {ArrayBuffer} arrayBuffer 文件内容
-     * @param {string} filename 文件名（用于解析时间戳）
-     * @returns {Promise<{json: string, meta: object}>}
-     */
     async function toTimingshow(arrayBuffer, filename) {
         let parsedData;
         if (arrayBuffer.byteLength >= 4 &&

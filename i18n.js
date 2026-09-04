@@ -14,7 +14,11 @@ const I18N_STRINGS = {
         unknownFormat: '未识别的 offsets 数据格式！',
         parseFailed: '文件解析失败!',
         songName: '谱面歌名', levelPath: '文件路径', analysisTime: '分析时间',
-        xperfectRatio: 'XPerfect Ratio'
+        xperfectRatio: 'XPerfect Ratio',
+        rangeFilter: '范围筛选:',
+        reset: '重置',
+        ignoreOutliers: '忽略离群点',
+        ignoredCount: '已隐藏 {count} 个点'
     },
     en: {
         importFile: 'Import File', resetZoom: 'Reset Zoom', clear: 'Clear',
@@ -31,7 +35,11 @@ const I18N_STRINGS = {
         unknownFormat: 'Unrecognized offsets data format!',
         parseFailed: 'File parsing failed!',
         songName: 'Song Name', levelPath: 'Level Path', analysisTime: 'Analysis Time',
-        xperfectRatio: 'XPerfect Ratio' 
+        xperfectRatio: 'XPerfect Ratio',
+        rangeFilter: 'Range Filter:',
+        reset: 'Reset',
+        ignoreOutliers: 'Ignore Outliers',
+    ignoredCount: 'Ignored {count} pts'
     },
     kr: {
         importFile: '파일 가져오기', resetZoom: '줌 초기화', clear: '비우기',
@@ -48,6 +56,10 @@ const I18N_STRINGS = {
         unknownFormat: '인식할 수 없는 offsets 데이터 형식입니다!',
         parseFailed: '파일 파싱 실패!',
         songName: '곡 이름', levelPath: '파일 경로', analysisTime: '분석 시간',
-        xperfectRatio: 'XPerfect Ratio' 
+        xperfectRatio: 'XPerfect Ratio',
+        rangeFilter: '범위 필터:',
+        reset: '초기화',
+        ignoreOutliers: '이상치 무시',
+        ignoredCount: '{count}개 숨김'
     }
 };

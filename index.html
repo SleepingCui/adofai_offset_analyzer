@@ -177,7 +177,7 @@
             color: #aaa;
             text-align: center;
         }
-        
+
         .chart-wrapper {
             position: relative;
             width: 100%;
@@ -186,7 +186,69 @@
             border-radius: 8px;
             padding: 10px;
             box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
         }
+
+        .scatter-filter-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 15px;
+            background: rgba(37, 37, 37, 0.85);
+            backdrop-filter: blur(4px);
+            padding: 6px 12px;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            font-size: 0.85rem;
+            z-index: 5;
+            flex-wrap: wrap;
+        }
+
+        .outlier-filter-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            user-select: none;
+        }
+
+        .ignored-count-badge {
+            color: #ffb74d;
+            font-size: 0.8rem;
+            background: rgba(255, 183, 77, 0.15);
+            padding: 2px 6px;
+            border-radius: 4px;
+            display: none;
+        }
+
+        .range-inputs {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .filter-input {
+            width: 75px;
+            background: #1e1e1e;
+            border: 1px solid #555;
+            color: #fff;
+            padding: 3px 6px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            outline: none;
+        }
+        .filter-input:focus { border-color: var(--accent-color); }
+        .btn-sm {
+            background-color: #333;
+            color: #fff;
+            border: 1px solid #555;
+            padding: 3px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: background 0.2s;
+        }
+        .btn-sm:hover { background-color: #444; }
         
         .distribution-stats {
             display: flex;
@@ -239,6 +301,9 @@
                 width: 100%;
                 text-align: center;
             }
+            .scatter-filter-container {
+                justify-content: center;
+            }
         }
     </style>
 </head>
@@ -265,7 +330,6 @@
         </div>
     </div>
 
-
     <div class="stats-grid">
         <div class="stats-card" style="border-left-color: #2196F3;">
             <h3 data-i18n="totalHits">总按键数</h3>
@@ -275,7 +339,7 @@
             <h3 data-i18n="maxCombo">最大连击数</h3>
             <div class="value" id="statMaxCombo">-</div>
         </div>
-        <div class="stats-card" style="border-left-color: #d958ff;">
+        <div class="stats-card" id="urCard" style="border-left-color: #d958ff;">
             <h3 data-i18n="ur">UR (不稳定度)</h3>
             <div class="value" id="statUR">-</div>
         </div>
@@ -289,7 +353,7 @@
             </div>
             <div class="value" id="statRatio">-</div>
         </div>
-</div>
+    </div>
 
     <div class="margin-counts-box" id="marginCountsBox">
         <div class="numbers-group" id="pureNumbersContainer">
@@ -301,6 +365,25 @@
         <div class="chart-section">
             <h3 data-i18n="scatterTitle">偏移量散点图</h3>
             <div class="chart-wrapper">
+                <div class="scatter-filter-container" id="scatterFilterContainer" style="display: none;">
+                    <div class="outlier-filter-group">
+                        <label style="color: #aaa; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                            <input type="checkbox" id="ignoreOutliersCheckbox" style="cursor: pointer;">
+                            <span data-i18n="ignoreOutliers">忽略离群点</span>
+                        </label>
+                        <span id="ignoredCountBadge" class="ignored-count-badge"></span>
+                    </div>
+
+                    <div class="range-inputs">
+                        <label style="color: #aaa;" data-i18n="rangeFilter">范围筛选:</label>
+                        <input type="number" id="minOffsetInput" placeholder="-∞" step="any" class="filter-input">
+                        <span id="rangeUnit1" style="color: #aaa;">ms</span>
+                        <span style="color: #aaa;">~</span>
+                        <input type="number" id="maxOffsetInput" placeholder="+∞" step="any" class="filter-input">
+                        <span id="rangeUnit2" style="color: #aaa;">ms</span>
+                        <button class="btn-sm" id="btnResetRange" data-i18n="reset">重置</button>
+                    </div>
+                </div>
                 <canvas id="scatterChart"></canvas>
             </div>
         </div>

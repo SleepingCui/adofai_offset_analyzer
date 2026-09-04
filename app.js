@@ -10,9 +10,16 @@ function getPreferredLanguage() {
 
 let currentLang = getPreferredLanguage();
 let currentMetaData = null;
+let minOffsetFilter = null;
+let maxOffsetFilter = null;
+let ignoreOutliers = false;
 
 function t(key) {
     return (I18N_STRINGS[currentLang] && I18N_STRINGS[currentLang][key]) || key;
+}
+
+function getUnit() {
+    return (currentMetaData && currentMetaData.isAngle) ? '°' : ' ms';
 }
 
 function updateMetaInfo() {
@@ -87,6 +94,23 @@ let xaccChart = null;
 let distributionChart = null;
 let pieChart = null;
 
+
+function calculateOutlierBounds(offsets) {
+    const validValues = offsets.map(item => item[0]).filter(val => !isNaN(val)).sort((a, b) => a - b);
+    if (validValues.length === 0) return { lowerBound: -Infinity, upperBound: Infinity };
+
+    const q1Index = Math.floor(validValues.length * 0.25);
+    const q3Index = Math.floor(validValues.length * 0.75);
+    const q1 = validValues[q1Index];
+    const q3 = validValues[q3Index];
+    const iqr = q3 - q1;
+
+    const lowerBound = q1 - 1.5 * iqr;
+    const upperBound = q3 + 1.5 * iqr;
+
+    return { lowerBound, upperBound };
+}
+
 function gaussianPDF(x, mean, stdDev) {
     const coefficient = 1 / (stdDev * Math.sqrt(2 * Math.PI));
     const exponent = -0.5 * Math.pow((x - mean) / stdDev, 2);
@@ -117,7 +141,7 @@ function createHistogramData(offsets, binCount = 60) {
     const extendedMin = min - padding;
     const extendedMax = max + padding;
     const range = extendedMax - extendedMin;
-    const binWidth = range / binCount;
+    const binWidth = range === 0 ? 1 : range / binCount;
     
     const bins = [];
     for (let i = 0; i < binCount; i++) {
@@ -145,6 +169,7 @@ function createHistogramData(offsets, binCount = 60) {
 function renderDistributionChart() {
     if (globalOffsets.length === 0) return;
     
+    const unit = getUnit();
     const stats = calculateStatistics();
     globalStdDev = stats.stdDev;
     
@@ -171,11 +196,11 @@ function renderDistributionChart() {
     distStatsContainer.innerHTML = `
         <div class="dist-stat-item">
             <div class="label">${t('mean')}</div>
-            <div class="value" style="color: #ffffff;">${globalAvg.toFixed(2)} ms</div>
+            <div class="value" style="color: #ffffff;">${globalAvg.toFixed(2)}${unit}</div>
         </div>
         <div class="dist-stat-item">
             <div class="label">${t('stdDev')}</div>
-            <div class="value" style="color: #ffffff;">${globalStdDev.toFixed(2)} ms</div>
+            <div class="value" style="color: #ffffff;">${globalStdDev.toFixed(2)}${unit}</div>
         </div>
         <div class="dist-stat-item">
             <div class="label">${t('skewness')}</div>
@@ -218,7 +243,7 @@ function renderDistributionChart() {
             borderDash: [5, 5],
             label: {
                 display: true,
-                content: `μ = ${globalAvg.toFixed(2)}`,
+                content: `μ = ${globalAvg.toFixed(2)}${unit}`,
                 position: 'start',
                 backgroundColor: 'rgba(230, 124, 11, 0.8)',
                 color: '#fff',
@@ -305,7 +330,7 @@ function renderDistributionChart() {
                     type: 'linear',
                     min: xMin,
                     max: xMax,
-                    title: { display: true, text: t('offsetX'), color: '#aaa' },
+                    title: { display: true, text: t('offsetX') + ` (${unit.trim()})`, color: '#aaa' },
                     grid: { color: '#252525' },
                     ticks: { 
                         color: '#bbb',
@@ -345,6 +370,16 @@ function renderDistributionChart() {
 function renderScatterChart() {
     if (globalOffsets.length === 0) return;
     
+    const filterContainer = document.getElementById('scatterFilterContainer');
+    if (filterContainer) filterContainer.style.display = 'flex';
+
+    const unit = getUnit();
+    const unit1 = document.getElementById('rangeUnit1');
+    const unit2 = document.getElementById('rangeUnit2');
+    if (unit1) unit1.innerText = unit.trim();
+    if (unit2) unit2.innerText = unit.trim();
+
+    const { lowerBound, upperBound } = calculateOutlierBounds(globalOffsets);
     const numContainer = document.getElementById('pureNumbersContainer');
     numContainer.innerHTML = '';
     DISPLAY_ORDER.forEach(type => {
@@ -376,18 +411,36 @@ function renderScatterChart() {
         };
     });
 
+    let ignoredCount = 0;
+
     for (let index = 0; index < globalOffsets.length; index++) {
         const item = globalOffsets[index];
-        const yOffset = item[0];
+        const yValue = item[0];
         const marginType = item[1];
-        const rawAngle = item[2]; 
+        const isOutlier = (yValue < lowerBound || yValue > upperBound);
+        if (ignoreOutliers && isOutlier) {
+            ignoredCount++;
+            continue;
+        }
+
+        if (minOffsetFilter !== null && yValue < minOffsetFilter) continue;
+        if (maxOffsetFilter !== null && yValue > maxOffsetFilter) continue;
 
         if (datasetsMap[marginType]) {
             datasetsMap[marginType].data.push({ 
                 x: index + 1, 
-                y: yOffset,
-                angle: rawAngle 
+                y: yValue
             });
+        }
+    }
+
+    const badgeEl = document.getElementById('ignoredCountBadge');
+    if (badgeEl) {
+        if (ignoreOutliers && ignoredCount > 0) {
+            badgeEl.innerText = (t('ignoredCount') || `已隐藏 ${ignoredCount} 个点`).replace('{count}', ignoredCount);
+            badgeEl.style.display = 'inline-block';
+        } else {
+            badgeEl.style.display = 'none';
         }
     }
 
@@ -399,9 +452,13 @@ function renderScatterChart() {
         let runningCount = 0;
 
         for (let index = 0; index < globalOffsets.length; index++) {
-            const yOffset = globalOffsets[index][0];
-            if (!isNaN(yOffset)) {
-                runningSum += yOffset;
+            const yValue = globalOffsets[index][0];
+            if (!isNaN(yValue)) {
+                if (ignoreOutliers && (yValue < lowerBound || yValue > upperBound)) continue;
+                if (minOffsetFilter !== null && yValue < minOffsetFilter) continue;
+                if (maxOffsetFilter !== null && yValue > maxOffsetFilter) continue;
+
+                runningSum += yValue;
                 runningCount++;
                 avgLineData.push({ x: index + 1, y: runningSum / runningCount });
             }
@@ -435,6 +492,11 @@ function renderScatterChart() {
             maintainAspectRatio: false,
             animation: false,
             spanGaps: true,
+            layout: {
+                padding: {
+                    bottom: 40
+                }
+            },
             scales: {
                 x: {
                     title: { display: true, text: t('keyX'), color: '#aaa' },
@@ -442,7 +504,7 @@ function renderScatterChart() {
                     ticks: { color: '#bbb' }
                 },
                 y: {
-                    title: { display: true, text: t('offsetX'), color: '#aaa' },
+                    title: { display: true, text: t('offsetX') + ` (${unit.trim()})`, color: '#aaa' },
                     grid: { color: '#252525' },
                     ticks: { color: '#bbb' }
                 }
@@ -456,12 +518,7 @@ function renderScatterChart() {
                     callbacks: {
                         label: function(context) {
                             const point = context.raw;
-                            let text = `${point.x}: ${point.y.toFixed(4)} ms`;
-                            if (point.angle !== undefined && point.angle !== null) {
-                                text += ` (${point.angle.toFixed(2)}°)`;
-                            }
-                            
-                            return `${text} (${context.dataset.label})`;
+                            return `${point.x}: ${point.y.toFixed(4)}${unit} (${context.dataset.label})`;
                         }
                     }
                 },
@@ -483,7 +540,7 @@ function renderScatterChart() {
                             borderWidth: 1.5,
                             label: {
                                 display: true,
-                                content: '0 ms',
+                                content: `0${unit}`,
                                 position: 'start',
                                 backgroundColor: 'rgba(0,0,0,0.6)',
                                 color: '#fff',
@@ -499,7 +556,7 @@ function renderScatterChart() {
                             borderDash: [5, 5],
                             label: {
                                 display: true,
-                                content: `Avg: ${globalAvg >= 0 ? '+' : ''}${globalAvg.toFixed(2)}`,
+                                content: `Avg: ${globalAvg >= 0 ? '+' : ''}${globalAvg.toFixed(2)}${unit}`,
                                 position: 'end',
                                 backgroundColor: 'rgba(230, 124, 11, 0.8)',
                                 color: '#fff',
@@ -517,13 +574,23 @@ function calculateStaticStats() {
     const totalHits = globalOffsets.length;
     const validOffsets = globalOffsets.map(item => item[0]).filter(val => !isNaN(val));
     
+    const isAngle = currentMetaData && currentMetaData.isAngle;
+    const urCard = document.getElementById('urCard');
+
+    if (urCard) {
+        urCard.style.display = isAngle ? 'none' : 'block';
+    }
+
     globalAvg = totalHits > 0 ? (validOffsets.reduce((a, b) => a + b, 0) / totalHits) : 0;
     
     if (totalHits > 0) {
         const variance = validOffsets.reduce((sum, val) => sum + Math.pow(val - globalAvg, 2), 0) / totalHits;
         globalStdDev = Math.sqrt(variance);
-        const ur = globalStdDev * 10;
-        document.getElementById('statUR').innerText = ur.toFixed(2);
+        
+        if (!isAngle) {
+            const ur = globalStdDev * 10;
+            document.getElementById('statUR').innerText = ur.toFixed(2);
+        }
     } else {
         globalStdDev = 0;
         document.getElementById('statUR').innerText = '-';
@@ -757,6 +824,23 @@ function clearData() {
     globalStdDev = 0;
     globalCounts = {};
     currentMetaData = null;
+    minOffsetFilter = null;
+    maxOffsetFilter = null;
+    ignoreOutliers = false;
+
+    const filterContainer = document.getElementById('scatterFilterContainer');
+    if (filterContainer) filterContainer.style.display = 'none';
+
+    const minInput = document.getElementById('minOffsetInput');
+    const maxInput = document.getElementById('maxOffsetInput');
+    if (minInput) minInput.value = '';
+    if (maxInput) maxInput.value = '';
+
+    const checkbox = document.getElementById('ignoreOutliersCheckbox');
+    if (checkbox) checkbox.checked = false;
+
+    const badgeEl = document.getElementById('ignoredCountBadge');
+    if (badgeEl) badgeEl.style.display = 'none';
 
     for (let i = 0; i <= 12; i++) globalCounts[i] = 0;
 
@@ -786,75 +870,9 @@ function updateAllCharts() {
     renderPieChart();
 }
 
-function convertToMs(offsets, isAngle, bpm, speed, pitch) {
-    if (!isAngle) return offsets;
-
-    if (typeof bpm !== 'number' || typeof speed !== 'number' || typeof pitch !== 'number' ||
-        !isFinite(bpm) || !isFinite(speed) || !isFinite(pitch) ||
-        bpm * speed * pitch === 0) {
-        console.warn('isAngle=true but bpm/speed/pitch missing or invalid, values left as-is');
-        return offsets;
-    }
-
-    const factor = 1000 / (3 * bpm * speed * pitch);
-    return offsets.map(item => {
-        const rawAngle = Number(item[0]);
-        const ms = Math.round(rawAngle * factor * 10000) / 10000;
-        return [ms, item[1], rawAngle];
-    });
+function processOffsets(offsets) {
+    return offsets.map(item => [Number(item[0]), item[1]]);
 }
-
-function LoadJson(file) {
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = function(evt) {
-        try {
-            const data = JSON.parse(evt.target.result);
-            if (!data.offsets) {
-                alert(t('invalidJson'));
-                return;
-            }
-            
-            let parsedOffsets = [];
-            let versionText = "Unknown";
-            
-            if (Array.isArray(data.offsets)) {
-                parsedOffsets = data.offsets;
-                versionText = "1.7.1+";
-            } else if (typeof data.offsets === 'object' && data.offsets !== null) {
-                const sortedKeys = Object.keys(data.offsets).sort((a, b) => parseInt(a) - parseInt(b));
-                parsedOffsets = sortedKeys.map(key => {
-                    const node = data.offsets[key];
-                    return [node.v, node.j];
-                });
-                versionText = "1.7.0";
-            } else {
-                alert(t('unknownFormat'));
-                return;
-            }
-
-            parsedOffsets = convertToMs(parsedOffsets, data.isAngle === true, data.bpm, data.speed, data.pitch);
-            globalOffsets = parsedOffsets;
-            currentMetaData = {
-                versionText: versionText,
-                songName: data.songName,
-                levelPath: data.levelPath,
-                timestamp: data.timestamp
-            };
-
-            updateMetaInfo();
-            calculateStaticStats();
-            updateAllCharts();
-            
-        } catch (err) {
-            alert(t('parseFailed'));
-            console.error(err);
-        }
-    };
-    reader.readAsText(file);
-}
-
 
 function readString(view, offset) {
     let length = 0;
@@ -956,14 +974,13 @@ function parseTlogData(decompressed) {
     else if (version >= 2) offsets = parseV2(view, offset);
     else throw new Error(`Unsupported tlog version: ${version}`);
 
-    offsets = convertToMs(offsets, isAngle, bpm, speed, pitch);
-
     return {
         songName: songName || '',
         levelPath: levelPath || '',
         timestamp: Number(timestamp),
         versionText: version === 1 ? '1.8.2- (v1)' : `1.9.0+ (v${version})`,
-        offsets: offsets
+        isAngle: isAngle,
+        offsets: processOffsets(offsets)
     };
 }
 
@@ -998,14 +1015,13 @@ async function LoadFile(file) {
                 return;
             }
 
-            parsedOffsets = convertToMs(parsedOffsets, parsed.isAngle === true, parsed.bpm, parsed.speed, parsed.pitch);
-
             data = {
-                offsets: parsedOffsets,
+                offsets: processOffsets(parsedOffsets),
                 versionText: versionText,
                 songName: parsed.songName,
                 levelPath: parsed.levelPath,
-                timestamp: parsed.timestamp
+                timestamp: parsed.timestamp,
+                isAngle: parsed.isAngle === true
             };
         } else if (fileName.endsWith('.crpl2')) {
             if (typeof Crpl2 === 'undefined') {
@@ -1016,11 +1032,12 @@ async function LoadFile(file) {
             const parsed = JSON.parse(json);
 
             data = {
-                offsets: parsed.offsets,
+                offsets: processOffsets(parsed.offsets),
                 versionText: 'CRPL2',
                 songName: parsed.songName,
                 levelPath: parsed.levelPath,
-                timestamp: parsed.timestamp / 1000
+                timestamp: parsed.timestamp / 1000,
+                isAngle: true
             };
         } else {
             const arrayBuffer = await file.arrayBuffer();
@@ -1041,7 +1058,8 @@ async function LoadFile(file) {
             versionText: data.versionText,
             songName: data.songName,
             levelPath: data.levelPath,
-            timestamp: data.timestamp
+            timestamp: data.timestamp,
+            isAngle: data.isAngle
         };
 
         updateMetaInfo();
@@ -1053,6 +1071,36 @@ async function LoadFile(file) {
         console.error(err);
     }
 }
+
+function handleRangeInput() {
+    const minVal = parseFloat(document.getElementById('minOffsetInput').value);
+    const maxVal = parseFloat(document.getElementById('maxOffsetInput').value);
+
+    minOffsetFilter = isNaN(minVal) ? null : minVal;
+    maxOffsetFilter = isNaN(maxVal) ? null : maxVal;
+
+    renderScatterChart();
+}
+
+document.getElementById('minOffsetInput')?.addEventListener('input', handleRangeInput);
+document.getElementById('maxOffsetInput')?.addEventListener('input', handleRangeInput);
+
+document.getElementById('ignoreOutliersCheckbox')?.addEventListener('change', (e) => {
+    ignoreOutliers = e.target.checked;
+    renderScatterChart();
+});
+
+document.getElementById('btnResetRange')?.addEventListener('click', () => {
+    const minInput = document.getElementById('minOffsetInput');
+    const maxInput = document.getElementById('maxOffsetInput');
+    if (minInput) minInput.value = '';
+    if (maxInput) maxInput.value = '';
+    
+    minOffsetFilter = null;
+    maxOffsetFilter = null;
+
+    renderScatterChart();
+});
 
 document.getElementById('jsonFile').addEventListener('change', function(e) {
     LoadFile(e.target.files[0]);
