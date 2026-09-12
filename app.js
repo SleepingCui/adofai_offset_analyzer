@@ -10,6 +10,7 @@ function getPreferredLanguage() {
 
 let currentLang = getPreferredLanguage();
 let currentMetaData = null;
+let metaExpanded = false;
 let minOffsetFilter = null;
 let maxOffsetFilter = null;
 let ignoreOutliers = false;
@@ -24,17 +25,48 @@ function getUnit() {
 
 function updateMetaInfo() {
     const metaEl = document.getElementById('metaInfo');
+    const summaryEl = document.getElementById('metaSummary');
+    const detailsEl = document.getElementById('metaDetails');
+    const toggleEl = document.getElementById('metaToggle');
     if (!currentMetaData || globalOffsets.length === 0) {
-        metaEl.innerText = t('waitingImport');
+        if (summaryEl) summaryEl.innerText = t('waitingImport');
+        if (detailsEl) {
+            detailsEl.innerHTML = '';
+            detailsEl.hidden = true;
+        }
+        if (toggleEl) {
+            toggleEl.disabled = true;
+            toggleEl.innerText = t('showDetails');
+            toggleEl.setAttribute('aria-expanded', 'false');
+        }
         return;
     }
 
-    metaEl.innerHTML = `
-        <strong>Version:</strong> ${currentMetaData.versionText || 'Unknown'}<br>
-        <strong>${t('songName')}:</strong> ${currentMetaData.songName || 'Unknown'}<br>
-        <strong>${t('levelPath')}:</strong> ${currentMetaData.levelPath || 'Unknown'}<br>
-        <strong>${t('analysisTime')}:</strong> ${currentMetaData.timestamp ? new Date(currentMetaData.timestamp * 1000).toLocaleString() : 'Unknown'}
-    `;
+    if (summaryEl) {
+        summaryEl.innerHTML = `
+            <strong>${t('songName')}:</strong> ${currentMetaData.songName || 'Unknown'}<br>
+            <strong>${t('levelPath')}:</strong> ${currentMetaData.levelPath || 'Unknown'}
+        `;
+    }
+    if (detailsEl) {
+        detailsEl.innerHTML = `
+            <div><strong>${t('formatVersion')}:</strong> ${currentMetaData.versionText || 'Unknown'}</div>
+            <div><strong>${t('analysisTime')}:</strong> ${currentMetaData.timestamp ? new Date(currentMetaData.timestamp * 1000).toLocaleString() : 'Unknown'}</div>
+            <div><strong>${t('judgeVersion')}:</strong> ${currentMetaData.judgeCodeVersion ? `v${currentMetaData.judgeCodeVersion}` : t('legacyMode')}</div>
+            <div><strong>${t('hitMarginVersion')}:</strong> ${currentMetaData.hitMarginVersion ?? 'Unknown'}</div>
+            <div><strong>${t('bpm')}:</strong> ${currentMetaData.bpm ?? 'Unknown'}</div>
+            <div><strong>${t('speed')}:</strong> ${currentMetaData.speed ?? 'Unknown'}</div>
+            <div><strong>${t('pitch')}:</strong> ${currentMetaData.pitch ?? 'Unknown'}</div>
+            <div><strong>${t('valueMode')}:</strong> ${currentMetaData.isAngle ? 'Angle' : 'Timing'}</div>
+            <div><strong>${t('recordCount')}:</strong> ${globalOffsets.length.toLocaleString()}</div>
+        `;
+        detailsEl.hidden = !metaExpanded;
+    }
+    if (toggleEl) {
+        toggleEl.disabled = false;
+        toggleEl.innerText = metaExpanded ? t('hideDetails') : t('showDetails');
+        toggleEl.setAttribute('aria-expanded', String(metaExpanded));
+    }
 }
 
 function setLanguage(lang) {
@@ -55,23 +87,28 @@ function setLanguage(lang) {
     }
 }
 
+// TimingShow judgeCode mapping.  Legacy logs are normalized to this mapping
+// during import, so all charts can use one semantic code set.
 const MARGIN_MAP = {
     0: { label: 'TooEarly', color: '#FF0000' },
     1: { label: 'VeryEarly', color: '#FF6F4E' },
     2: { label: 'EarlyPerfect', color: '#A0FF4E' },
-    3: { label: 'Perfect', color: '#60FF4E' },
-    4: { label: 'LatePerfect', color: '#A0FF4E' },
-    5: { label: 'VeryLate', color: '#FF6F4E' },
-    6: { label: 'TooLate', color: '#FF0000' },
-    7: { label: 'Multipress', color: '#00FFED' },
-    8: { label: 'FailMiss', color: '#D958FF' },
-    9: { label: 'FailOverload', color: '#D958FF' },
-    10: { label: 'Auto', color: '#FFFFFF' },
-    11: { label: 'OverPress', color: '#D958FF' },
-    12: { label: 'XPerfect', color: '#4DCCFF' } 
+    3: { label: 'PerfectMinus', color: '#60FF4E' },
+    4: { label: 'XPerfect', color: '#4DCCFF' },
+    5: { label: 'PerfectPlus', color: '#60FF4E' },
+    6: { label: 'LatePerfect', color: '#A0FF4E' },
+    7: { label: 'VeryLate', color: '#FF6F4E' },
+    8: { label: 'TooLate', color: '#FF0000' },
+    9: { label: 'Multipress', color: '#00FFED' },
+    10: { label: 'FailMiss', color: '#D958FF' },
+    11: { label: 'FailOverload', color: '#D958FF' },
+    12: { label: 'Auto', color: '#FFFFFF' },
+    13: { label: 'OverPress', color: '#D958FF' },
+    14: { label: 'Midspin', color: '#888888' },
+    15: { label: 'FailedFloor', color: '#D958FF' }
 };
 
-const DISPLAY_ORDER = [9, 0, 1, 2, 12, 3, 4, 5, 7, 8, 10];
+const DISPLAY_ORDER = [9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15];
 let showDynamicAvg = false;
 
 const JD_WEIGHTS = {
@@ -93,6 +130,34 @@ let myChart = null;
 let xaccChart = null;
 let distributionChart = null;
 let pieChart = null;
+
+function normalizeLegacyJudgeCode(rawCode) {
+    const legacyMap = {
+        0: 0, 1: 1, 2: 2, 3: 3, 4: 6, 5: 7, 6: 8,
+        7: 9, 8: 10, 9: 11, 10: 12, 11: 13, 12: 4
+    };
+    return Object.prototype.hasOwnProperty.call(legacyMap, rawCode) ? legacyMap[rawCode] : -1;
+}
+
+function isPerfectFamilyCode(type) {
+    return [2, 3, 4, 5, 6].includes(type);
+}
+
+function isNormalPerfectCode(type) {
+    return type === 3 || type === 5;
+}
+
+function getXaccWeight(type) {
+    if (type === 0) return JD_WEIGHTS.tooEarly;
+    if (type === 1) return JD_WEIGHTS.early;
+    if (type === 2) return JD_WEIGHTS.ePerfect;
+    if (type === 3 || type === 4 || type === 5) return JD_WEIGHTS.perfect;
+    if (type === 6) return JD_WEIGHTS.lPerfect;
+    if (type === 7 || type === 8) return JD_WEIGHTS.late;
+    if ([10, 11, 13, 15].includes(type)) return JD_WEIGHTS.failMiss;
+    if (type === 12) return JD_WEIGHTS.auto;
+    return null;
+}
 
 
 function calculateOutlierBounds(offsets) {
@@ -389,8 +454,18 @@ function renderScatterChart() {
         const span = document.createElement('span');
         span.className = 'pure-number';
         span.style.color = MARGIN_MAP[type].color;
-        span.innerText = count;
-        span.title = MARGIN_MAP[type].label; 
+        span.title = MARGIN_MAP[type].label;
+
+        const label = document.createElement('span');
+        label.className = 'pure-number-label';
+        label.innerText = MARGIN_MAP[type].label;
+
+        const value = document.createElement('span');
+        value.className = 'pure-number-value';
+        value.innerText = count;
+
+        span.appendChild(label);
+        span.appendChild(value);
         numContainer.appendChild(span);
     });
 
@@ -596,7 +671,7 @@ function calculateStaticStats() {
         document.getElementById('statUR').innerText = '-';
     }
 
-    for (let i = 0; i <= 12; i++) globalCounts[i] = 0;
+    for (let i = 0; i <= 15; i++) globalCounts[i] = 0;
     globalOffsets.forEach(item => {
         const marginType = item[1];
         if (globalCounts[marginType] !== undefined) globalCounts[marginType]++;
@@ -604,23 +679,23 @@ function calculateStaticStats() {
 
     updateRatioDisplay();
 
-    const failMissSum = globalCounts[8] + globalCounts[9]; 
+    const failMissSum = globalCounts[10] + globalCounts[11] + globalCounts[13] + globalCounts[15];
     
     const judgementsArray = [
         failMissSum,  
         globalCounts[0],     
         globalCounts[1],     
         globalCounts[2],     
-        globalCounts[3] + (globalCounts[12] || 0) + (globalCounts[10] || 0), 
-        globalCounts[4],     
-        globalCounts[5]    
+        (globalCounts[3] || 0) + (globalCounts[4] || 0) + (globalCounts[5] || 0) + (globalCounts[12] || 0),
+        globalCounts[6],
+        (globalCounts[7] || 0) + (globalCounts[8] || 0)
     ];
     
     const xacc = calcXACC(judgementsArray);
     let maxCombo = 0;
     let currentCombo = 0;
     globalOffsets.forEach(item => {
-        if (item[1] === 3 || item[1] === 12 || item[1] === 10) {
+        if (isPerfectFamilyCode(item[1]) || item[1] === 12) {
             currentCombo++;
             if (currentCombo > maxCombo) maxCombo = currentCombo;
         } else {
@@ -641,9 +716,9 @@ function updateRatioDisplay() {
 
     const showXPerf = document.getElementById('toggleXPerfectRatio').checked;
 
-    const perfectCount = globalCounts[3] || 0;
-    const xPerfectCount = globalCounts[12] || 0;
-    const autoCount = globalCounts[10] || 0;
+    const perfectCount = (globalCounts[3] || 0) + (globalCounts[5] || 0);
+    const xPerfectCount = globalCounts[4] || 0;
+    const autoCount = globalCounts[12] || 0;
 
     let numerator = 0; 
     
@@ -683,22 +758,13 @@ function renderXaccChart() {
     const xaccData = [];
     let runningWeightedSum = 0;
     let runningCount = 0;
-    const validTypes = [0, 1, 2, 3, 4, 5, 8, 9, 12, 10]; 
+    const validTypes = DISPLAY_ORDER;
 
     globalOffsets.forEach((item) => {
         const type = item[1];
         if (validTypes.includes(type)) {
-            let weight = 0;
-
-            if (type === 8 || type === 9) weight = JD_WEIGHTS["failMiss"];
-            else if (type === 0) weight = JD_WEIGHTS["tooEarly"];
-            else if (type === 1) weight = JD_WEIGHTS["early"];
-            else if (type === 2) weight = JD_WEIGHTS["ePerfect"];
-            else if (type === 3) weight = JD_WEIGHTS["perfect"];
-            else if (type === 12) weight = JD_WEIGHTS["xPerfect"]; 
-            else if (type === 10) weight = JD_WEIGHTS["auto"]; 
-            else if (type === 4) weight = JD_WEIGHTS["lPerfect"];
-            else if (type === 5) weight = JD_WEIGHTS["late"];
+            const weight = getXaccWeight(type);
+            if (weight === null) return;
             
             runningWeightedSum += weight;
             runningCount++;
@@ -773,13 +839,13 @@ function renderPieChart() {
 
     const rawGroups = {
         'Too Early': { count: globalCounts[0], color: '#FF0000' },
-        'Very Early/Late': { count: globalCounts[1] + globalCounts[5], color: '#FF6F4E' },
-        'Early/Late Perfect': { count: globalCounts[2] + globalCounts[4], color: '#A0FF4E' },
-        'Perfect': { count: globalCounts[3], color: '#60FF4E' },
-        'XPerfect': { count: globalCounts[12] || 0, color: '#4DCCFF' },
-        'Auto': { count: globalCounts[10] || 0, color: '#FFFFFF' },
-        'Multipress': { count: globalCounts[7], color: '#00FFED' },
-        'Overload/Miss': { count: globalCounts[8] + globalCounts[9], color: '#D958FF' }
+        'Very Early/Late': { count: (globalCounts[1] || 0) + (globalCounts[7] || 0), color: '#FF6F4E' },
+        'Early/Late Perfect': { count: (globalCounts[2] || 0) + (globalCounts[6] || 0), color: '#A0FF4E' },
+        'Perfect': { count: (globalCounts[3] || 0) + (globalCounts[5] || 0), color: '#60FF4E' },
+        'XPerfect': { count: globalCounts[4] || 0, color: '#4DCCFF' },
+        'Auto': { count: globalCounts[12] || 0, color: '#FFFFFF' },
+        'Multipress': { count: globalCounts[9] || 0, color: '#00FFED' },
+        'Overload/Miss': { count: (globalCounts[10] || 0) + (globalCounts[11] || 0) + (globalCounts[13] || 0) + (globalCounts[15] || 0), color: '#D958FF' }
     };
 
     const groups = {};
@@ -824,6 +890,7 @@ function clearData() {
     globalStdDev = 0;
     globalCounts = {};
     currentMetaData = null;
+    metaExpanded = false;
     minOffsetFilter = null;
     maxOffsetFilter = null;
     ignoreOutliers = false;
@@ -842,7 +909,7 @@ function clearData() {
     const badgeEl = document.getElementById('ignoredCountBadge');
     if (badgeEl) badgeEl.style.display = 'none';
 
-    for (let i = 0; i <= 12; i++) globalCounts[i] = 0;
+    for (let i = 0; i <= 15; i++) globalCounts[i] = 0;
 
     document.getElementById('statTotal').innerText = '-';
     document.getElementById('statMaxCombo').innerText = '-';
@@ -871,7 +938,14 @@ function updateAllCharts() {
 }
 
 function processOffsets(offsets) {
-    return offsets.map(item => [Number(item[0]), item[1]]);
+    return offsets.map((item, index) => {
+        const value = Number(item[0]);
+        const rawCode = item.length > 1 && item[1] != null ? Number(item[1]) : null;
+        const hasJudgeCode = item.length > 2 && item[2] != null;
+        const judgeCode = hasJudgeCode ? Number(item[2]) : normalizeLegacyJudgeCode(rawCode);
+        const isXP = item.length > 3 && Boolean(item[3]);
+        return [value, judgeCode, rawCode, isXP, index];
+    });
 }
 
 function readString(view, offset) {
@@ -919,24 +993,69 @@ function parseV2(view, offset) {
             view64.setBigInt64(0, actualBits, true);
             const timing = view64.getFloat64(0, true);
             
-            let marginCode = 0;
-            let shift = 0;
-            let byte;
-            let bytesRead = 0;
-            do {
-                if (offset >= view.byteLength) throw new Error('Unexpected EOF while reading VLQ');
-                byte = view[offset++];
-                bytesRead++;
-                marginCode |= (byte & 0x7F) << shift;
-                shift += 7;
-                if (bytesRead > 5) throw new Error('VLQ exceeds maximum 5 bytes');
-            } while (byte & 0x80);
-            
+            const readVarInt = (zigZag) => {
+                let result = 0;
+                let shift = 0;
+                let bytesRead = 0;
+                let byte;
+                do {
+                    if (offset >= view.byteLength) throw new Error('Unexpected EOF while reading VarInt');
+                    byte = view[offset++];
+                    result += (byte & 0x7F) * Math.pow(2, shift);
+                    shift += 7;
+                    bytesRead++;
+                    if (bytesRead > 5) throw new Error('VarInt exceeds maximum 5 bytes');
+                } while (byte & 0x80);
+                return zigZag ? ((result >>> 1) ^ -(result & 1)) : result;
+            };
+
+            const marginCode = readVarInt(true);
             offsets.push([Math.round(timing * 10000) / 10000, marginCode]);
         } catch (e) {
             console.warn('Error parsing at offset', offset, ':', e.message);
             break;
         }
+    }
+    return offsets;
+}
+
+function parseV5(view, offset) {
+    const dv = new DataView(view.buffer, view.byteOffset);
+    const offsets = [];
+    let prevTimingBits = 0n;
+
+    const readZigZagVarInt = () => {
+        let result = 0;
+        let shift = 0;
+        let byte;
+        let count = 0;
+        do {
+            if (offset >= view.byteLength) throw new Error('Unexpected EOF while reading v5 VarInt');
+            byte = view[offset++];
+            result += (byte & 0x7F) * Math.pow(2, shift);
+            shift += 7;
+            count++;
+            if (count > 5) throw new Error('v5 VarInt exceeds maximum 5 bytes');
+        } while (byte & 0x80);
+        return (result >>> 1) ^ -(result & 1);
+    };
+
+    while (offset < view.byteLength) {
+        if (offset + 8 > view.byteLength) throw new Error('Truncated v5 timing value');
+        const xorBits = dv.getBigInt64(offset, true);
+        offset += 8;
+        const actualBits = xorBits ^ prevTimingBits;
+        prevTimingBits = actualBits;
+
+        const valueBuffer = new ArrayBuffer(8);
+        const valueView = new DataView(valueBuffer);
+        valueView.setBigInt64(0, actualBits, true);
+        const value = valueView.getFloat64(0, true);
+        const rawMarginCode = readZigZagVarInt();
+        const judgeCode = readZigZagVarInt();
+        if (offset >= view.byteLength) throw new Error('Truncated v5 XPerfect flag');
+        const isXP = view[offset++] !== 0;
+        offsets.push([Math.round(value * 10000) / 10000, rawMarginCode, judgeCode, isXP]);
     }
     return offsets;
 }
@@ -970,7 +1089,14 @@ function parseTlogData(decompressed) {
     }
 
     let offsets;
-    if (version === 1) offsets = parseV1(view, offset);
+    let hitMarginVersion = null;
+    let judgeCodeVersion = null;
+    if (version >= 5) {
+        if (offset + 2 > view.byteLength) throw new Error('Missing v5 format metadata');
+        hitMarginVersion = view[offset++];
+        judgeCodeVersion = view[offset++];
+        offsets = parseV5(view, offset);
+    } else if (version === 1) offsets = parseV1(view, offset);
     else if (version >= 2) offsets = parseV2(view, offset);
     else throw new Error(`Unsupported tlog version: ${version}`);
 
@@ -978,8 +1104,13 @@ function parseTlogData(decompressed) {
         songName: songName || '',
         levelPath: levelPath || '',
         timestamp: Number(timestamp),
-        versionText: version === 1 ? '1.8.2- (v1)' : `1.9.0+ (v${version})`,
+        bpm,
+        speed,
+        pitch,
+        versionText: version >= 5 ? `TimingShow binary v${version}` : (version === 1 ? '1.8.2- (v1)' : `1.9.0+ (v${version})`),
         isAngle: isAngle,
+        hitMarginVersion,
+        judgeCodeVersion,
         offsets: processOffsets(offsets)
     };
 }
@@ -1005,11 +1136,11 @@ async function LoadFile(file) {
 
             if (Array.isArray(parsed.offsets)) {
                 parsedOffsets = parsed.offsets;
-                versionText = "1.7.1+";
+                versionText = parsed.formatVersion >= 5 ? `TimingShow JSON v${parsed.formatVersion}` : "Legacy JSON array";
             } else if (typeof parsed.offsets === 'object' && parsed.offsets !== null) {
                 const sortedKeys = Object.keys(parsed.offsets).sort((a, b) => parseInt(a) - parseInt(b));
                 parsedOffsets = sortedKeys.map(key => [parsed.offsets[key].v, parsed.offsets[key].j]);
-                versionText = "1.7.0";
+                versionText = "Legacy JSON object";
             } else {
                 alert(t('unknownFormat'));
                 return;
@@ -1021,7 +1152,12 @@ async function LoadFile(file) {
                 songName: parsed.songName,
                 levelPath: parsed.levelPath,
                 timestamp: parsed.timestamp,
-                isAngle: parsed.isAngle === true
+                bpm: parsed.bpm ?? null,
+                speed: parsed.speed ?? null,
+                pitch: parsed.pitch ?? null,
+                isAngle: parsed.isAngle === true,
+                hitMarginVersion: parsed.hitMarginVersion || null,
+                judgeCodeVersion: parsed.judgeCodeVersion || null
             };
         } else if (fileName.endsWith('.crpl2')) {
             if (typeof Crpl2 === 'undefined') {
@@ -1037,7 +1173,12 @@ async function LoadFile(file) {
                 songName: parsed.songName,
                 levelPath: parsed.levelPath,
                 timestamp: parsed.timestamp / 1000,
-                isAngle: true
+                bpm: null,
+                speed: null,
+                pitch: null,
+                isAngle: true,
+                hitMarginVersion: null,
+                judgeCodeVersion: null
             };
         } else {
             const arrayBuffer = await file.arrayBuffer();
@@ -1059,7 +1200,12 @@ async function LoadFile(file) {
             songName: data.songName,
             levelPath: data.levelPath,
             timestamp: data.timestamp,
-            isAngle: data.isAngle
+            bpm: data.bpm ?? null,
+            speed: data.speed ?? null,
+            pitch: data.pitch ?? null,
+            isAngle: data.isAngle,
+            hitMarginVersion: data.hitMarginVersion || null,
+            judgeCodeVersion: data.judgeCodeVersion || null
         };
 
         updateMetaInfo();
@@ -1125,10 +1271,45 @@ document.body.addEventListener('drop', function(e) {
     }
 });
 
+async function loadSourceFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const source = params.get('source');
+    if (!source) return;
+
+    try {
+        const sourceUrl = new URL(source);
+        const isLoopback = sourceUrl.protocol === 'http:' &&
+            (sourceUrl.hostname === '127.0.0.1' || sourceUrl.hostname === 'localhost');
+        if (!isLoopback) throw new Error('Only loopback sources are allowed');
+
+        const response = await fetch(sourceUrl.toString(), { cache: 'no-store' });
+        if (!response.ok) throw new Error(`Bridge returned HTTP ${response.status}`);
+
+        const blob = await response.blob();
+        const fileName = params.get('name') || 'timingshow.log';
+        await LoadFile(new File([blob], fileName, { type: blob.type || 'application/octet-stream' }));
+
+        // Keep the page URL shareable and prevent accidental re-import on refresh.
+        const cleanUrl = window.location.pathname + window.location.hash;
+        window.history.replaceState({}, document.title, cleanUrl);
+    } catch (error) {
+        console.error('Automatic log import failed:', error);
+        alert(`${t('autoImportFailed')}\n${error.message}`);
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const langSelect = document.getElementById('langSelect');
     if (langSelect) {
         langSelect.value = currentLang;
     }
+    const metaToggle = document.getElementById('metaToggle');
+    if (metaToggle) {
+        metaToggle.addEventListener('click', () => {
+            metaExpanded = !metaExpanded;
+            updateMetaInfo();
+        });
+    }
     setLanguage(currentLang); 
+    loadSourceFromUrl();
 });

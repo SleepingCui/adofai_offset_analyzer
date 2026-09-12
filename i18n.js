@@ -14,11 +14,16 @@ const I18N_STRINGS = {
         unknownFormat: '未识别的 offsets 数据格式！',
         parseFailed: '文件解析失败!',
         songName: '谱面歌名', levelPath: '文件路径', analysisTime: '分析时间',
+        showDetails: '显示详细信息', hideDetails: '收起详细信息',
+        formatVersion: '格式版本', judgeVersion: '判定版本', legacyMode: '旧格式兼容模式',
+        hitMarginVersion: '游戏判定版本', bpm: 'BPM', speed: '速度', pitch: '音调',
+        valueMode: '数据模式', recordCount: '记录数',
         xperfectRatio: 'XPerfect Ratio',
         rangeFilter: '范围筛选:',
         reset: '重置',
         ignoreOutliers: '忽略离群点',
-        ignoredCount: '已隐藏 {count} 个点'
+        ignoredCount: '已隐藏 {count} 个点',
+        autoImportFailed: '自动导入日志失败'
     },
     en: {
         importFile: 'Import File', resetZoom: 'Reset Zoom', clear: 'Clear',
@@ -35,11 +40,16 @@ const I18N_STRINGS = {
         unknownFormat: 'Unrecognized offsets data format!',
         parseFailed: 'File parsing failed!',
         songName: 'Song Name', levelPath: 'Level Path', analysisTime: 'Analysis Time',
+        showDetails: 'Show details', hideDetails: 'Hide details',
+        formatVersion: 'Format', judgeVersion: 'Judge code', legacyMode: 'Legacy compatibility',
+        hitMarginVersion: 'Hit margin version', bpm: 'BPM', speed: 'Speed', pitch: 'Pitch',
+        valueMode: 'Value mode', recordCount: 'Records',
         xperfectRatio: 'XPerfect Ratio',
         rangeFilter: 'Range Filter:',
         reset: 'Reset',
         ignoreOutliers: 'Ignore Outliers',
-    ignoredCount: 'Ignored {count} pts'
+        ignoredCount: 'Ignored {count} pts',
+        autoImportFailed: 'Automatic log import failed'
     },
     kr: {
         importFile: '파일 가져오기', resetZoom: '줌 초기화', clear: '비우기',
@@ -56,10 +66,15 @@ const I18N_STRINGS = {
         unknownFormat: '인식할 수 없는 offsets 데이터 형식입니다!',
         parseFailed: '파일 파싱 실패!',
         songName: '곡 이름', levelPath: '파일 경로', analysisTime: '분석 시간',
+        showDetails: '상세 정보 표시', hideDetails: '상세 정보 접기',
+        formatVersion: '형식 버전', judgeVersion: '판정 버전', legacyMode: '이전 형식 호환 모드',
+        hitMarginVersion: '게임 판정 버전', bpm: 'BPM', speed: '속도', pitch: '피치',
+        valueMode: '데이터 모드', recordCount: '기록 수',
         xperfectRatio: 'XPerfect Ratio',
         rangeFilter: '범위 필터:',
         reset: '초기화',
         ignoreOutliers: '이상치 무시',
-        ignoredCount: '{count}개 숨김'
+        ignoredCount: '{count}개 숨김',
+        autoImportFailed: '로그 자동 가져오기 실패'
     }
 };
