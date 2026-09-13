@@ -93,7 +93,8 @@ const MARGIN_MAP = {
     0: { label: 'TooEarly', color: '#FF0000' },
     1: { label: 'VeryEarly', color: '#FF6F4E' },
     2: { label: 'EarlyPerfect', color: '#A0FF4E' },
-    3: { label: 'PerfectMinus', color: '#60FF4E' },
+    // Code 3 is version-dependent: Legacy uses Perfect, Game34 uses PerfectMinus.
+    3: { label: 'Perfect', color: '#60FF4E' },
     4: { label: 'XPerfect', color: '#4DCCFF' },
     5: { label: 'PerfectPlus', color: '#60FF4E' },
     6: { label: 'LatePerfect', color: '#A0FF4E' },
@@ -109,6 +110,22 @@ const MARGIN_MAP = {
 };
 
 const DISPLAY_ORDER = [9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15];
+const LEGACY_MARGIN_MAP = {
+    0: { label: 'TooEarly', color: '#FF0000' },
+    1: { label: 'VeryEarly', color: '#FF6F4E' },
+    2: { label: 'EarlyPerfect', color: '#A0FF4E' },
+    3: { label: 'Perfect', color: '#60FF4E' },
+    4: { label: 'XPerfect', color: '#4DCCFF' },
+    6: { label: 'LatePerfect', color: '#A0FF4E' },
+    7: { label: 'VeryLate', color: '#FF6F4E' },
+    8: { label: 'TooLate', color: '#FF0000' },
+    9: { label: 'Multipress', color: '#00FFED' },
+    10: { label: 'FailMiss', color: '#D958FF' },
+    11: { label: 'FailOverload', color: '#D958FF' },
+    12: { label: 'Auto', color: '#FFFFFF' },
+    13: { label: 'OverPress', color: '#D958FF' }
+};
+const LEGACY_DISPLAY_ORDER = [9, 0, 1, 2, 4, 3, 6, 7, 8, 10, 11, 12, 13];
 let showDynamicAvg = false;
 
 const JD_WEIGHTS = {
@@ -130,6 +147,24 @@ let myChart = null;
 let xaccChart = null;
 let distributionChart = null;
 let pieChart = null;
+
+function isGame34Log() {
+    const version = currentMetaData && currentMetaData.hitMarginVersion;
+    return String(version || '').toLowerCase() === 'game34' || Number(version) === 2;
+}
+
+function getMarginDefinition(type) {
+    const definition = isGame34Log() ? MARGIN_MAP[type] : LEGACY_MARGIN_MAP[type];
+    if (!definition) return { label: 'Unknown', color: '#FFFFFF' };
+    if (isGame34Log() && type === 3) {
+        return { label: 'PerfectMinus', color: definition.color };
+    }
+    return definition;
+}
+
+function getDisplayOrder() {
+    return isGame34Log() ? DISPLAY_ORDER : LEGACY_DISPLAY_ORDER;
+}
 
 function normalizeLegacyJudgeCode(rawCode) {
     const legacyMap = {
@@ -447,18 +482,19 @@ function renderScatterChart() {
     const { lowerBound, upperBound } = calculateOutlierBounds(globalOffsets);
     const numContainer = document.getElementById('pureNumbersContainer');
     numContainer.innerHTML = '';
-    DISPLAY_ORDER.forEach(type => {
+    getDisplayOrder().forEach(type => {
         const count = globalCounts[type] || 0;
         if ((type === 12 || type === 10) && count === 0) return;
 
         const span = document.createElement('span');
         span.className = 'pure-number';
-        span.style.color = MARGIN_MAP[type].color;
-        span.title = MARGIN_MAP[type].label;
+        const definition = getMarginDefinition(type);
+        span.style.color = definition.color;
+        span.title = definition.label;
 
         const label = document.createElement('span');
         label.className = 'pure-number-label';
-        label.innerText = MARGIN_MAP[type].label;
+        label.innerText = definition.label;
 
         const value = document.createElement('span');
         value.className = 'pure-number-value';
@@ -470,14 +506,15 @@ function renderScatterChart() {
     });
 
     const datasetsMap = {};
-    DISPLAY_ORDER.forEach(i => {
+    getDisplayOrder().forEach(i => {
         if ((i === 12 || i === 10) && (!globalCounts[i] || globalCounts[i] === 0)) return;
         
+        const definition = getMarginDefinition(i);
         datasetsMap[i] = {
-            label: MARGIN_MAP[i].label,
+            label: definition.label,
             data: [],
-            borderColor: MARGIN_MAP[i].color,
-            backgroundColor: MARGIN_MAP[i].color + 'CC',
+            borderColor: definition.color,
+            backgroundColor: definition.color + 'CC',
             pointRadius: 3,
             pointHoverRadius: 6,
             showLine: false,
