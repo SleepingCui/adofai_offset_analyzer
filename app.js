@@ -480,6 +480,7 @@ function renderScatterChart() {
     if (unit2) unit2.innerText = unit.trim();
 
     const { lowerBound, upperBound } = calculateOutlierBounds(globalOffsets);
+    const useTimeline = hasTimelineData();
     const numContainer = document.getElementById('pureNumbersContainer');
     numContainer.innerHTML = '';
     getDisplayOrder().forEach(type => {
@@ -540,7 +541,7 @@ function renderScatterChart() {
 
         if (datasetsMap[marginType]) {
             datasetsMap[marginType].data.push({ 
-                x: index + 1, 
+                x: getRecordX(item, index),
                 y: yValue
             });
         }
@@ -572,7 +573,7 @@ function renderScatterChart() {
 
                 runningSum += yValue;
                 runningCount++;
-                avgLineData.push({ x: index + 1, y: runningSum / runningCount });
+                avgLineData.push({ x: getRecordX(globalOffsets[index], index), y: runningSum / runningCount });
             }
         }
 
@@ -611,7 +612,7 @@ function renderScatterChart() {
             },
             scales: {
                 x: {
-                    title: { display: true, text: t('keyX'), color: '#aaa' },
+                    title: { display: true, text: useTimeline ? t('timeX') : t('keyX'), color: '#aaa' },
                     grid: { color: '#252525' },
                     ticks: { color: '#bbb' }
                 },
@@ -630,7 +631,8 @@ function renderScatterChart() {
                     callbacks: {
                         label: function(context) {
                             const point = context.raw;
-                            return `${point.x}: ${point.y.toFixed(4)}${unit} (${context.dataset.label})`;
+                            const xText = useTimeline ? `${point.x.toFixed(1)} ms` : point.x;
+                            return `${xText}: ${point.y.toFixed(4)}${unit} (${context.dataset.label})`;
                         }
                     }
                 },
@@ -801,11 +803,16 @@ function renderXaccChart() {
         const type = item[1];
         if (validTypes.includes(type)) {
             const weight = getXaccWeight(type);
-            if (weight === null) return;
+            if (weight === null) {
+                xaccData.push(null);
+                return;
+            }
             
             runningWeightedSum += weight;
             runningCount++;
             xaccData.push((runningWeightedSum / runningCount) * 100);
+        } else {
+            xaccData.push(null);
         }
     });
 
@@ -814,7 +821,7 @@ function renderXaccChart() {
     xaccChart = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: globalOffsets.map((_, i) => i + 1),
+            labels: globalOffsets.map((item, i) => getRecordX(item, i)),
             datasets: [{
                 label: 'XACC (%)',
                 data: xaccData,
@@ -843,7 +850,8 @@ function renderXaccChart() {
                             return '';
                         },
                         label: function(context) {
-                            return t('keyX') + ' ' + context.label + ': ' + context.raw.toFixed(3) + '%';
+                            const axisLabel = hasTimelineData() ? t('timeX') : t('keyX');
+                            return axisLabel + ' ' + context.label + ': ' + context.raw.toFixed(3) + '%';
                         }
                     }
                 }
@@ -975,14 +983,31 @@ function updateAllCharts() {
 }
 
 function processOffsets(offsets) {
+    return processOffsetRecords(offsets, false);
+}
+
+function processOffsetRecords(offsets, timeFirst) {
     return offsets.map((item, index) => {
-        const value = Number(item[0]);
-        const rawCode = item.length > 1 && item[1] != null ? Number(item[1]) : null;
-        const hasJudgeCode = item.length > 2 && item[2] != null;
-        const judgeCode = hasJudgeCode ? Number(item[2]) : normalizeLegacyJudgeCode(rawCode);
-        const isXP = item.length > 3 && Boolean(item[3]);
-        return [value, judgeCode, rawCode, isXP, index];
+        const timeMs = timeFirst && item[0] != null ? Number(item[0]) : null;
+        const valueIndex = timeFirst ? 1 : 0;
+        const rawIndex = timeFirst ? 2 : 1;
+        const judgeIndex = timeFirst ? 3 : 2;
+        const xpIndex = timeFirst ? 4 : 3;
+        const value = Number(item[valueIndex]);
+        const rawCode = item.length > rawIndex && item[rawIndex] != null ? Number(item[rawIndex]) : null;
+        const hasJudgeCode = item.length > judgeIndex && item[judgeIndex] != null;
+        const judgeCode = hasJudgeCode ? Number(item[judgeIndex]) : normalizeLegacyJudgeCode(rawCode);
+        const isXP = item.length > xpIndex && Boolean(item[xpIndex]);
+        return [value, judgeCode, rawCode, isXP, index, Number.isFinite(timeMs) && timeMs >= 0 ? timeMs : null];
     });
+}
+
+function hasTimelineData() {
+    return globalOffsets.some(item => Number.isFinite(item[5]) && item[5] >= 0);
+}
+
+function getRecordX(item, index) {
+    return Number.isFinite(item[5]) && item[5] >= 0 ? item[5] : index + 1;
 }
 
 function readString(view, offset) {
@@ -1059,7 +1084,8 @@ function parseV2(view, offset) {
 function parseV5(view, offset) {
     const dv = new DataView(view.buffer, view.byteOffset);
     const offsets = [];
-    let prevTimingBits = 0n;
+    let prevTimeBits = 0n;
+    let prevValueBits = 0n;
 
     const readZigZagVarInt = () => {
         let result = 0;
@@ -1078,21 +1104,31 @@ function parseV5(view, offset) {
     };
 
     while (offset < view.byteLength) {
-        if (offset + 8 > view.byteLength) throw new Error('Truncated v5 timing value');
-        const xorBits = dv.getBigInt64(offset, true);
+        if (offset + 16 > view.byteLength) throw new Error('Truncated v5 time/value pair');
+        const timeXorBits = dv.getBigInt64(offset, true);
         offset += 8;
-        const actualBits = xorBits ^ prevTimingBits;
-        prevTimingBits = actualBits;
+        const timeBits = timeXorBits ^ prevTimeBits;
+        prevTimeBits = timeBits;
+
+        const valueXorBits = dv.getBigInt64(offset, true);
+        offset += 8;
+        const valueBits = valueXorBits ^ prevValueBits;
+        prevValueBits = valueBits;
+
+        const timeBuffer = new ArrayBuffer(8);
+        const timeView = new DataView(timeBuffer);
+        timeView.setBigInt64(0, timeBits, true);
+        const timeMs = timeView.getFloat64(0, true);
 
         const valueBuffer = new ArrayBuffer(8);
         const valueView = new DataView(valueBuffer);
-        valueView.setBigInt64(0, actualBits, true);
+        valueView.setBigInt64(0, valueBits, true);
         const value = valueView.getFloat64(0, true);
         const rawMarginCode = readZigZagVarInt();
         const judgeCode = readZigZagVarInt();
         if (offset >= view.byteLength) throw new Error('Truncated v5 XPerfect flag');
         const isXP = view[offset++] !== 0;
-        offsets.push([Math.round(value * 10000) / 10000, rawMarginCode, judgeCode, isXP]);
+        offsets.push([Math.round(timeMs * 1000) / 1000, Math.round(value * 10000) / 10000, rawMarginCode, judgeCode, isXP]);
     }
     return offsets;
 }
@@ -1148,7 +1184,7 @@ function parseTlogData(decompressed) {
         isAngle: isAngle,
         hitMarginVersion,
         judgeCodeVersion,
-        offsets: processOffsets(offsets)
+        offsets: processOffsetRecords(offsets, true)
     };
 }
 
@@ -1184,7 +1220,7 @@ async function LoadFile(file) {
             }
 
             data = {
-                offsets: processOffsets(parsedOffsets),
+                offsets: processOffsetRecords(parsedOffsets, parsed.formatVersion >= 6),
                 versionText: versionText,
                 songName: parsed.songName,
                 levelPath: parsed.levelPath,
