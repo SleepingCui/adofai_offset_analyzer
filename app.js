@@ -480,7 +480,8 @@ function renderScatterChart() {
     if (unit2) unit2.innerText = unit.trim();
 
     const { lowerBound, upperBound } = calculateOutlierBounds(globalOffsets);
-    const useTimeline = hasTimelineData();
+    const useHitAxis = document.getElementById('scatterUseHitCheckbox')?.checked === true;
+    const useTimeline = !useHitAxis && hasTimelineData();
     const numContainer = document.getElementById('pureNumbersContainer');
     numContainer.innerHTML = '';
     getDisplayOrder().forEach(type => {
@@ -541,7 +542,7 @@ function renderScatterChart() {
 
         if (datasetsMap[marginType]) {
             datasetsMap[marginType].data.push({ 
-                x: getRecordX(item, index),
+                x: getChartX(item, index, useHitAxis),
                 y: yValue
             });
         }
@@ -573,7 +574,7 @@ function renderScatterChart() {
 
                 runningSum += yValue;
                 runningCount++;
-                avgLineData.push({ x: getRecordX(globalOffsets[index], index), y: runningSum / runningCount });
+                avgLineData.push({ x: getChartX(globalOffsets[index], index, useHitAxis), y: runningSum / runningCount });
             }
         }
 
@@ -798,6 +799,8 @@ function renderXaccChart() {
     let runningWeightedSum = 0;
     let runningCount = 0;
     const validTypes = DISPLAY_ORDER;
+    const useHitAxis = document.getElementById('xaccUseHitCheckbox')?.checked === true;
+    const useTimeline = !useHitAxis && hasTimelineData();
 
     globalOffsets.forEach((item) => {
         const type = item[1];
@@ -821,7 +824,7 @@ function renderXaccChart() {
     xaccChart = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: globalOffsets.map((item, i) => getRecordX(item, i)),
+            labels: globalOffsets.map((item, i) => getChartX(item, i, useHitAxis)),
             datasets: [{
                 label: 'XACC (%)',
                 data: xaccData,
@@ -850,7 +853,7 @@ function renderXaccChart() {
                             return '';
                         },
                         label: function(context) {
-                            const axisLabel = hasTimelineData() ? t('timeX') : t('keyX');
+                            const axisLabel = useTimeline ? t('timeX') : t('keyX');
                             return axisLabel + ' ' + context.label + ': ' + context.raw.toFixed(3) + '%';
                         }
                     }
@@ -867,7 +870,8 @@ function renderXaccChart() {
                     },
                     grid: { color: '#252525' }
                 },
-                x: { 
+                x: {
+                    title: { display: true, text: useTimeline ? t('timeX') : t('keyX'), color: '#aaa' },
                     ticks: { color: '#bbb' },
                     grid: { color: '#252525' }
                 }
@@ -951,6 +955,11 @@ function clearData() {
     const checkbox = document.getElementById('ignoreOutliersCheckbox');
     if (checkbox) checkbox.checked = false;
 
+    const scatterUseHitCheckbox = document.getElementById('scatterUseHitCheckbox');
+    if (scatterUseHitCheckbox) scatterUseHitCheckbox.checked = false;
+    const xaccUseHitCheckbox = document.getElementById('xaccUseHitCheckbox');
+    if (xaccUseHitCheckbox) xaccUseHitCheckbox.checked = false;
+
     const badgeEl = document.getElementById('ignoredCountBadge');
     if (badgeEl) badgeEl.style.display = 'none';
 
@@ -1008,6 +1017,10 @@ function hasTimelineData() {
 
 function getRecordX(item, index) {
     return Number.isFinite(item[5]) && item[5] >= 0 ? item[5] : index + 1;
+}
+
+function getChartX(item, index, useHitAxis) {
+    return useHitAxis ? index + 1 : getRecordX(item, index);
 }
 
 function readString(view, offset) {
@@ -1307,6 +1320,14 @@ document.getElementById('maxOffsetInput')?.addEventListener('input', handleRange
 document.getElementById('ignoreOutliersCheckbox')?.addEventListener('change', (e) => {
     ignoreOutliers = e.target.checked;
     renderScatterChart();
+});
+
+document.getElementById('scatterUseHitCheckbox')?.addEventListener('change', () => {
+    renderScatterChart();
+});
+
+document.getElementById('xaccUseHitCheckbox')?.addEventListener('change', () => {
+    renderXaccChart();
 });
 
 document.getElementById('btnResetRange')?.addEventListener('click', () => {

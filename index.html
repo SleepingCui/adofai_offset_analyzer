@@ -76,6 +76,10 @@
                 <div class="scatter-filter-container" id="scatterFilterContainer" style="display: none;">
                     <div class="outlier-filter-group">
                         <label style="color: #aaa; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                            <input type="checkbox" id="scatterUseHitCheckbox" style="cursor: pointer;">
+                            <span data-i18n="useHitAxis">使用 Hit 作为横轴</span>
+                        </label>
+                        <label style="color: #aaa; cursor: pointer; display: flex; align-items: center; gap: 4px;">
                             <input type="checkbox" id="ignoreOutliersCheckbox" style="cursor: pointer;">
                             <span data-i18n="ignoreOutliers">忽略离群点</span>
                         </label>
@@ -114,6 +118,12 @@
         <div class="chart-section">
             <h3 data-i18n="xaccTitle">XACC变化曲线</h3>
             <div class="chart-wrapper">
+                <div class="xacc-filter-container">
+                    <label style="color: #aaa; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                        <input type="checkbox" id="xaccUseHitCheckbox" style="cursor: pointer;">
+                        <span data-i18n="useHitAxis">使用 Hit 作为横轴</span>
+                    </label>
+                </div>
                 <canvas id="xaccChart"></canvas>
             </div>
         </div>

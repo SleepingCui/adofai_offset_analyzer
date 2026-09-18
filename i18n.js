@@ -20,7 +20,7 @@ const I18N_STRINGS = {
         valueMode: '数据模式', recordCount: '记录数',
         xperfectRatio: 'XPerfect Ratio',
         rangeFilter: '范围筛选:',
-        reset: '重置',
+        reset: '重置', useHitAxis: '使用 Hit 作为横轴',
         ignoreOutliers: '忽略离群点',
         ignoredCount: '已隐藏 {count} 个点',
         autoImportFailed: '自动导入日志失败'
@@ -46,7 +46,7 @@ const I18N_STRINGS = {
         valueMode: 'Value mode', recordCount: 'Records',
         xperfectRatio: 'XPerfect Ratio',
         rangeFilter: 'Range Filter:',
-        reset: 'Reset',
+        reset: 'Reset', useHitAxis: 'Use Hit as X-axis',
         ignoreOutliers: 'Ignore Outliers',
         ignoredCount: 'Ignored {count} pts',
         autoImportFailed: 'Automatic log import failed'
@@ -72,7 +72,7 @@ const I18N_STRINGS = {
         valueMode: '데이터 모드', recordCount: '기록 수',
         xperfectRatio: 'XPerfect Ratio',
         rangeFilter: '범위 필터:',
-        reset: '초기화',
+        reset: '초기화', useHitAxis: 'Hit을 X축으로 사용',
         ignoreOutliers: '이상치 무시',
         ignoredCount: '{count}개 숨김',
         autoImportFailed: '로그 자동 가져오기 실패'
