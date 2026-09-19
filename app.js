@@ -1305,8 +1305,12 @@ async function LoadFile(file) {
 }
 
 function handleRangeInput() {
-    const minVal = parseFloat(document.getElementById('minOffsetInput').value);
-    const maxVal = parseFloat(document.getElementById('maxOffsetInput').value);
+    let minVal = parseFloat(document.getElementById('minOffsetInput').value);
+    let maxVal = parseFloat(document.getElementById('maxOffsetInput').value);
+
+    if (!isNaN(minVal) && !isNaN(maxVal) && minVal > maxVal) {
+        [minVal, maxVal] = [maxVal, minVal];
+    }
 
     minOffsetFilter = isNaN(minVal) ? null : minVal;
     maxOffsetFilter = isNaN(maxVal) ? null : maxVal;
