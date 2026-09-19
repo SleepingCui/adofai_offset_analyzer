@@ -1095,6 +1095,14 @@ function parseV2(view, offset) {
 }
 
 function parseV5(view, offset) {
+    return parseV5Records(view, offset, false);
+}
+
+function parseV7(view, offset) {
+    return parseV5Records(view, offset, true);
+}
+
+function parseV5Records(view, offset, compactXor) {
     const dv = new DataView(view.buffer, view.byteOffset);
     const offsets = [];
     let prevTimeBits = 0n;
@@ -1116,16 +1124,39 @@ function parseV5(view, offset) {
         return (result >>> 1) ^ -(result & 1);
     };
 
+    const readXorBits = (previousBits) => {
+        if (!compactXor) {
+            if (offset + 8 > view.byteLength) throw new Error('Truncated v5 double');
+            const xorBits = dv.getBigInt64(offset, true);
+            offset += 8;
+            return xorBits ^ previousBits;
+        }
+
+        if (offset >= view.byteLength) throw new Error('Unexpected EOF while reading v7 double control');
+        const control = view[offset++];
+        if (control === 0) return previousBits;
+        if ((control & 0x80) === 0) throw new Error('Invalid v7 double control byte');
+
+        const leadingBytes = (control >>> 4) & 0x07;
+        const significantBytes = control & 0x0F;
+        if (significantBytes < 1 || significantBytes > 8 || leadingBytes + significantBytes > 8)
+            throw new Error('Invalid v7 double byte range');
+
+        const trailingBytes = 8 - leadingBytes - significantBytes;
+        let xorBits = 0n;
+        if (offset + significantBytes > view.byteLength)
+            throw new Error('Truncated v7 double payload');
+        for (let i = 0; i < significantBytes; i++) {
+            xorBits |= BigInt(view[offset++]) << BigInt(8 * (trailingBytes + i));
+        }
+        return xorBits ^ previousBits;
+    };
+
     while (offset < view.byteLength) {
-        if (offset + 16 > view.byteLength) throw new Error('Truncated v5 time/value pair');
-        const timeXorBits = dv.getBigInt64(offset, true);
-        offset += 8;
-        const timeBits = timeXorBits ^ prevTimeBits;
+        const timeBits = readXorBits(prevTimeBits);
         prevTimeBits = timeBits;
 
-        const valueXorBits = dv.getBigInt64(offset, true);
-        offset += 8;
-        const valueBits = valueXorBits ^ prevValueBits;
+        const valueBits = readXorBits(prevValueBits);
         prevValueBits = valueBits;
 
         const timeBuffer = new ArrayBuffer(8);
@@ -1139,7 +1170,7 @@ function parseV5(view, offset) {
         const value = valueView.getFloat64(0, true);
         const rawMarginCode = readZigZagVarInt();
         const judgeCode = readZigZagVarInt();
-        if (offset >= view.byteLength) throw new Error('Truncated v5 XPerfect flag');
+        if (offset >= view.byteLength) throw new Error(`Truncated v${compactXor ? 7 : 5} XPerfect flag`);
         const isXP = view[offset++] !== 0;
         offsets.push([Math.round(timeMs * 1000) / 1000, Math.round(value * 10000) / 10000, rawMarginCode, judgeCode, isXP]);
     }
@@ -1181,7 +1212,7 @@ function parseTlogData(decompressed) {
         if (offset + 2 > view.byteLength) throw new Error('Missing v5 format metadata');
         hitMarginVersion = view[offset++];
         judgeCodeVersion = view[offset++];
-        offsets = parseV5(view, offset);
+        offsets = version >= 7 ? parseV7(view, offset) : parseV5(view, offset);
     } else if (version === 1) offsets = parseV1(view, offset);
     else if (version >= 2) offsets = parseV2(view, offset);
     else throw new Error(`Unsupported tlog version: ${version}`);
