@@ -8,7 +8,7 @@ const I18N_STRINGS = {
         legendTip: '提示:直接点击图例可切换显示判定类型',
         mean: '平均值 (μ)', stdDev: '标准差 (σ)', skewness: '偏度', kurtosis: '峰度',
         offsetDist: '偏移量分布', normalFit: '正态分布拟合',
-        offsetX: '偏移量 (ms)', frequency: '频次', normalFitValue: '正态拟合值',
+        offsetX: '偏移量', frequency: '频次', normalFitValue: '正态拟合值',
         keyX: '按键', timeX: '时间 (ms)',
         invalidJson: '无效的数据格式',
         unknownFormat: '未识别的 offsets 数据格式！',
@@ -22,7 +22,10 @@ const I18N_STRINGS = {
         rangeFilter: '范围筛选:',
         reset: '重置', useHitAxis: '使用 Hit 作为横轴',
         ignoreOutliers: '忽略离群点',
+        pointSize: '点大小',
         ignoredCount: '已隐藏 {count} 个点',
+        inRangeCount: '范围内 {count} 个点',
+        axisClipped: '轴已裁剪至 {min} ~ {max}{unit}（{count} 个点超出范围）',
         autoImportFailed: '自动导入日志失败'
     },
     en: {
@@ -34,7 +37,7 @@ const I18N_STRINGS = {
         legendTip: 'Tip: click a legend item to toggle that judgment type',
         mean: 'Mean (μ)', stdDev: 'Std Dev (σ)', skewness: 'Skewness', kurtosis: 'Kurtosis',
         offsetDist: 'Offset Distribution', normalFit: 'Normal Fit',
-        offsetX: 'Offset (ms)', frequency: 'Frequency', normalFitValue: 'Normal fit value',
+        offsetX: 'Offset', frequency: 'Frequency', normalFitValue: 'Normal fit value',
         keyX: 'Hit', timeX: 'Time (ms)',
         invalidJson: 'Invalid file data',
         unknownFormat: 'Unrecognized offsets data format!',
@@ -48,7 +51,10 @@ const I18N_STRINGS = {
         rangeFilter: 'Range Filter:',
         reset: 'Reset', useHitAxis: 'Use Hit as X-axis',
         ignoreOutliers: 'Ignore Outliers',
+        pointSize: 'Point Size',
         ignoredCount: 'Ignored {count} pts',
+        inRangeCount: '{count} pts in range',
+        axisClipped: 'Axis cropped to {min} ~ {max}{unit} ({count} pts out of range)',
         autoImportFailed: 'Automatic log import failed'
     },
     kr: {
@@ -60,7 +66,7 @@ const I18N_STRINGS = {
         legendTip: '팁: 범례를 클릭하면 해당 판정 유형 표시를 전환할 수 있습니다',
         mean: '평균 (μ)', stdDev: '표준편차 (σ)', skewness: '왜도', kurtosis: '첨도',
         offsetDist: '오프셋 분포', normalFit: '정규분포 적합',
-        offsetX: '오프셋 (ms)', frequency: '빈도', normalFitValue: '정규 적합값',
+        offsetX: '오프셋', frequency: '빈도', normalFitValue: '정규 적합값',
         keyX: '타건', timeX: '시간 (ms)',
         invalidJson: '잘못된 파일 데이터입니다',
         unknownFormat: '인식할 수 없는 offsets 데이터 형식입니다!',
@@ -74,7 +80,10 @@ const I18N_STRINGS = {
         rangeFilter: '범위 필터:',
         reset: '초기화', useHitAxis: 'Hit을 X축으로 사용',
         ignoreOutliers: '이상치 무시',
+        pointSize: '점 크기',
         ignoredCount: '{count}개 숨김',
+        inRangeCount: '범위 내 {count}개',
+        axisClipped: '축이 {min} ~ {max}{unit}(으)로 잘림 ({count}개 범위 밖)',
         autoImportFailed: '로그 자동 가져오기 실패'
     }
 };

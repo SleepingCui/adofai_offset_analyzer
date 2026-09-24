@@ -219,7 +219,28 @@ input[type="file"] {
     flex-direction: column;
 }
 
-.scatter-filter-container {
+/* Chart.js sizes a canvas from its parent's content box and ignores any
+   siblings, so the canvas needs a container of its own holding the leftover
+   height.  Sharing the wrapper with a filter bar made the canvas overflow it by
+   exactly the bar's height -- the wrapper is a fixed 500px flex column with no
+   clipping, so the overflow landed on whatever sat below (the footer links,
+   for the bottom-most chart).  The canvas is pinned inside the box so its own
+   height can never feed back into the box's size. */
+.chart-canvas-box {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.chart-canvas-box > canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+.scatter-filter-container,
+.xacc-filter-container {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -241,10 +262,38 @@ input[type="file"] {
     user-select: none;
 }
 
+.point-size-control {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #aaa;
+    user-select: none;
+}
+
+.point-size-control input[type="range"] {
+    width: 80px;
+    cursor: pointer;
+}
+
+.point-size-value {
+    min-width: 32px;
+    color: #ddd;
+    font-variant-numeric: tabular-nums;
+}
+
 .ignored-count-badge {
     color: #ffb74d;
     font-size: 0.8rem;
     background: rgba(255, 183, 77, 0.15);
+    padding: 2px 6px;
+    border-radius: 4px;
+    display: none;
+}
+
+.in-range-count-badge {
+    color: #4DCCFF;
+    font-size: 0.8rem;
+    background: rgba(77, 204, 255, 0.15);
     padding: 2px 6px;
     border-radius: 4px;
     display: none;
@@ -278,6 +327,17 @@ input[type="file"] {
     transition: background 0.2s;
 }
 .btn-sm:hover { background-color: #444; }
+
+.dist-axis-crop-badge {
+    display: none;
+    align-self: flex-start;
+    color: #ffb74d;
+    font-size: 0.8rem;
+    background: rgba(255, 183, 77, 0.15);
+    padding: 3px 8px;
+    border-radius: 4px;
+    margin-bottom: 8px;
+}
 
 .distribution-stats {
     display: flex;
@@ -330,7 +390,8 @@ input[type="file"] {
         width: 100%;
         text-align: center;
     }
-    .scatter-filter-container {
+    .scatter-filter-container,
+    .xacc-filter-container {
         justify-content: center;
     }
 }

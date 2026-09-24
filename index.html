@@ -83,6 +83,11 @@
                             <input type="checkbox" id="ignoreOutliersCheckbox" style="cursor: pointer;">
                             <span data-i18n="ignoreOutliers">忽略离群点</span>
                         </label>
+                        <label class="point-size-control">
+                            <span data-i18n="pointSize">点大小</span>
+                            <input type="range" id="pointSizeSlider" min="1" max="10" step="1" value="3">
+                            <span id="pointSizeValue" class="point-size-value">3 px</span>
+                        </label>
                         <span id="ignoredCountBadge" class="ignored-count-badge"></span>
                     </div>
 
@@ -94,9 +99,12 @@
                         <input type="number" id="maxOffsetInput" placeholder="+∞" step="any" class="filter-input">
                         <span id="rangeUnit2" style="color: #aaa;">ms</span>
                         <button class="btn-sm" id="btnResetRange" data-i18n="reset">重置</button>
+                        <span id="inRangeCountBadge" class="in-range-count-badge"></span>
                     </div>
                 </div>
-                <canvas id="scatterChart"></canvas>
+                <div class="chart-canvas-box">
+                    <canvas id="scatterChart"></canvas>
+                </div>
             </div>
         </div>
 
@@ -104,27 +112,34 @@
             <h3 data-i18n="distTitle">正态分布图</h3>
             <div class="distribution-stats" id="distributionStats"></div>
             <div class="chart-wrapper">
-                <canvas id="distributionChart"></canvas>
+                <div class="dist-axis-crop-badge" id="distAxisCropBadge"></div>
+                <div class="chart-canvas-box">
+                    <canvas id="distributionChart"></canvas>
+                </div>
             </div>
         </div>
 
         <div class="chart-section">
             <h3 data-i18n="pieTitle">判定分布比例</h3>
             <div class="chart-wrapper">
-                <canvas id="distributionPieChart"></canvas>
+                <div class="chart-canvas-box">
+                    <canvas id="distributionPieChart"></canvas>
+                </div>
             </div>
         </div>
 
         <div class="chart-section">
             <h3 data-i18n="xaccTitle">XACC变化曲线</h3>
             <div class="chart-wrapper">
-                <div class="xacc-filter-container">
+                <div class="xacc-filter-container" id="xaccFilterContainer" style="display: none;">
                     <label style="color: #aaa; cursor: pointer; display: flex; align-items: center; gap: 4px;">
                         <input type="checkbox" id="xaccUseHitCheckbox" style="cursor: pointer;">
                         <span data-i18n="useHitAxis">使用 Hit 作为横轴</span>
                     </label>
                 </div>
-                <canvas id="xaccChart"></canvas>
+                <div class="chart-canvas-box">
+                    <canvas id="xaccChart"></canvas>
+                </div>
             </div>
         </div>
     </div>

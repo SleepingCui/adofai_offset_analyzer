@@ -14,6 +14,7 @@ let metaExpanded = false;
 let minOffsetFilter = null;
 let maxOffsetFilter = null;
 let ignoreOutliers = false;
+let pointSize = 3;
 
 function t(key) {
     return (I18N_STRINGS[currentLang] && I18N_STRINGS[currentLang][key]) || key;
@@ -230,19 +231,60 @@ function calculateStatistics() {
     return { mean, stdDev };
 }
 
-function createHistogramData(offsets, binCount = 60) {
+// Axis range for the distribution histogram: median +/- 4 robust sigma, with
+// robust sigma = IQR / 1.349.  Taking the raw min/max lets a handful of extreme
+// hits stretch the axis until the bulk of the data collapses into one or two
+// bins -- exactly the part the histogram exists to show.  On a clean run nothing
+// lies beyond 4 sigma, so this degrades to the full data range: the axis is only
+// ever cropped when there really is something far outside.
+function calculateRobustAxisRange(offsets) {
+    const validValues = offsets.map(item => item[0]).filter(val => !isNaN(val)).sort((a, b) => a - b);
+    if (validValues.length === 0) return null;
+
+    const quantile = (q) => {
+        const pos = (validValues.length - 1) * q;
+        const lower = Math.floor(pos);
+        const upper = Math.ceil(pos);
+        if (lower === upper) return validValues[lower];
+        return validValues[lower] + (validValues[upper] - validValues[lower]) * (pos - lower);
+    };
+
+    const dataMin = validValues[0];
+    const dataMax = validValues[validValues.length - 1];
+    const median = quantile(0.5);
+    const robustSigma = (quantile(0.75) - quantile(0.25)) / 1.349;
+
+    if (!(robustSigma > 0)) {
+        // More than half the hits share one offset: keep the full range rather
+        // than collapsing the axis onto a single value.
+        return { min: dataMin, max: dataMax };
+    }
+
+    return {
+        min: Math.max(median - 4 * robustSigma, dataMin),
+        max: Math.min(median + 4 * robustSigma, dataMax)
+    };
+}
+
+function createHistogramData(offsets, binCount = 60, axisRange = null) {
     const validOffsets = offsets.map(item => item[0]).filter(val => !isNaN(val));
     if (validOffsets.length === 0) return [];
-    
-    const min = Math.min(...validOffsets);
-    const max = Math.max(...validOffsets);
-    
+
+    let min, max;
+    if (axisRange) {
+        min = axisRange.min;
+        max = axisRange.max;
+    } else {
+        min = Math.min(...validOffsets);
+        max = Math.max(...validOffsets);
+    }
+
     const padding = (max - min) * 0.05;
     const extendedMin = min - padding;
     const extendedMax = max + padding;
     const range = extendedMax - extendedMin;
     const binWidth = range === 0 ? 1 : range / binCount;
-    
+
     const bins = [];
     for (let i = 0; i < binCount; i++) {
         const binStart = extendedMin + i * binWidth;
@@ -255,14 +297,18 @@ function createHistogramData(offsets, binCount = 60) {
             count: 0
         });
     }
-    
+
     validOffsets.forEach(offset => {
+        // Off-axis: skip instead of clamping, otherwise every extreme hit would
+        // pile into the first/last bin and fake a spike.  The count is reported
+        // next to the chart instead.
+        if (offset < extendedMin || offset > extendedMax) return;
         let binIndex = Math.floor((offset - extendedMin) / binWidth);
         if (binIndex >= binCount) binIndex = binCount - 1;
         if (binIndex < 0) binIndex = 0;
         bins[binIndex].count++;
     });
-    
+
     return bins;
 }
 
@@ -273,14 +319,38 @@ function renderDistributionChart() {
     const stats = calculateStatistics();
     globalStdDev = stats.stdDev;
     
-    const histogramData = createHistogramData(globalOffsets, 60);
-    
+    const histogramData = createHistogramData(globalOffsets, 60, calculateRobustAxisRange(globalOffsets));
+    // An import whose offsets are all non-numeric yields no bins; the plot is
+    // empty in that case, so fall back to a placeholder axis.
+    const hasBins = histogramData.length > 0;
+    const xMin = hasBins ? histogramData[0].start : 0;
+    const xMax = hasBins ? histogramData[histogramData.length - 1].end : 1;
+
+    // Points the cropped axis left off the histogram. Everything else on this
+    // chart (mu, sigma, skew, kurtosis, the +/-1sigma lines) still uses the full
+    // data set, so the badge is the only place this is visible.
+    const outsideCount = globalOffsets.reduce((count, item) => {
+        const value = item[0];
+        return (!isNaN(value) && (value < xMin || value > xMax)) ? count + 1 : count;
+    }, 0);
+    const axisCropBadge = document.getElementById('distAxisCropBadge');
+    if (axisCropBadge) {
+        if (outsideCount > 0) {
+            axisCropBadge.innerText = (t('axisClipped') || `轴已裁剪至 {min} ~ {max}{unit}（{count} 个点超出范围）`)
+                .replace('{min}', xMin.toFixed(1))
+                .replace('{max}', xMax.toFixed(1))
+                .replace('{unit}', unit)
+                .replace('{count}', outsideCount);
+            axisCropBadge.style.display = 'block';
+        } else {
+            axisCropBadge.style.display = 'none';
+        }
+    }
+
     const normalCurveData = [];
     if (globalStdDev > 0) {
-        const xMin = histogramData[0].start;
-        const xMax = histogramData[histogramData.length - 1].end;
         const step = (xMax - xMin) / 200;
-        
+
         const maxCount = Math.max(...histogramData.map(bin => bin.count), 1);
         const scaleFactor = maxCount / gaussianPDF(globalAvg, globalAvg, globalStdDev);
         
@@ -329,10 +399,7 @@ function renderDistributionChart() {
     }
     
     const ctx = document.getElementById('distributionChart').getContext('2d');
-    
-    const xMin = histogramData[0].start;
-    const xMax = histogramData[histogramData.length - 1].end;
-    
+
     const annotationsConfig = {
         meanLine: {
             type: 'line',
@@ -517,8 +584,8 @@ function renderScatterChart() {
             data: [],
             borderColor: definition.color,
             backgroundColor: definition.color + 'CC',
-            pointRadius: 3,
-            pointHoverRadius: 6,
+            pointRadius: pointSize,
+            pointHoverRadius: pointSize * 2,
             showLine: false,
             parsing: false,
             normalized: true
@@ -526,22 +593,28 @@ function renderScatterChart() {
     });
 
     let ignoredCount = 0;
+    let inRangeCount = 0;
 
     for (let index = 0; index < globalOffsets.length; index++) {
         const item = globalOffsets[index];
         const yValue = item[0];
         const marginType = item[1];
         const isOutlier = (yValue < lowerBound || yValue > upperBound);
+        // Counted independently of the outlier filter: this badge reports the
+        // range filter alone, mirroring how ignoredCountBadge reports outliers.
+        const withinRange = !(minOffsetFilter !== null && yValue < minOffsetFilter)
+            && !(maxOffsetFilter !== null && yValue > maxOffsetFilter);
+        if (withinRange && !isNaN(yValue)) inRangeCount++;
+
         if (ignoreOutliers && isOutlier) {
             ignoredCount++;
             continue;
         }
 
-        if (minOffsetFilter !== null && yValue < minOffsetFilter) continue;
-        if (maxOffsetFilter !== null && yValue > maxOffsetFilter) continue;
+        if (!withinRange) continue;
 
         if (datasetsMap[marginType]) {
-            datasetsMap[marginType].data.push({ 
+            datasetsMap[marginType].data.push({
                 x: getChartX(item, index, useHitAxis),
                 y: yValue
             });
@@ -555,6 +628,16 @@ function renderScatterChart() {
             badgeEl.style.display = 'inline-block';
         } else {
             badgeEl.style.display = 'none';
+        }
+    }
+
+    const rangeBadgeEl = document.getElementById('inRangeCountBadge');
+    if (rangeBadgeEl) {
+        if (minOffsetFilter !== null || maxOffsetFilter !== null) {
+            rangeBadgeEl.innerText = (t('inRangeCount') || `范围内 ${inRangeCount} 个点`).replace('{count}', inRangeCount);
+            rangeBadgeEl.style.display = 'inline-block';
+        } else {
+            rangeBadgeEl.style.display = 'none';
         }
     }
 
@@ -795,6 +878,9 @@ function calcXACC(judgements) {
 }
 
 function renderXaccChart() {
+    const filterContainer = document.getElementById('xaccFilterContainer');
+    if (filterContainer) filterContainer.style.display = 'flex';
+
     const xaccData = [];
     let runningWeightedSum = 0;
     let runningCount = 0;
@@ -946,6 +1032,8 @@ function clearData() {
 
     const filterContainer = document.getElementById('scatterFilterContainer');
     if (filterContainer) filterContainer.style.display = 'none';
+    const xaccFilterContainer = document.getElementById('xaccFilterContainer');
+    if (xaccFilterContainer) xaccFilterContainer.style.display = 'none';
 
     const minInput = document.getElementById('minOffsetInput');
     const maxInput = document.getElementById('maxOffsetInput');
@@ -962,6 +1050,9 @@ function clearData() {
 
     const badgeEl = document.getElementById('ignoredCountBadge');
     if (badgeEl) badgeEl.style.display = 'none';
+
+    const distAxisCropBadge = document.getElementById('distAxisCropBadge');
+    if (distAxisCropBadge) distAxisCropBadge.style.display = 'none';
 
     for (let i = 0; i <= 15; i++) globalCounts[i] = 0;
 
@@ -1359,6 +1450,26 @@ document.getElementById('ignoreOutliersCheckbox')?.addEventListener('change', (e
 
 document.getElementById('scatterUseHitCheckbox')?.addEventListener('change', () => {
     renderScatterChart();
+});
+
+document.getElementById('pointSizeSlider')?.addEventListener('input', (e) => {
+    pointSize = parseInt(e.target.value, 10) || 1;
+
+    const valueEl = document.getElementById('pointSizeValue');
+    if (valueEl) valueEl.innerText = `${pointSize} px`;
+
+    // Update the live chart in place: rebuilding the datasets on every slider
+    // step would be too slow for large logs.
+    if (!myChart) {
+        renderScatterChart();
+        return;
+    }
+    myChart.data.datasets.forEach(ds => {
+        if (ds.type === 'line') return; // Avg line has no points
+        ds.pointRadius = pointSize;
+        ds.pointHoverRadius = pointSize * 2;
+    });
+    myChart.update('none');
 });
 
 document.getElementById('xaccUseHitCheckbox')?.addEventListener('change', () => {
