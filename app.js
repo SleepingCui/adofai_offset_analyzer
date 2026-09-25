@@ -152,17 +152,58 @@ let pieChart = null;
 let comboChart = null;
 let rollingChart = null;
 let returnChart = null;
+let deltaChart = null;
+let acfChart = null;
 
 // Every chart on the page, in the order they appear, so the config menu, the
 // render pass and "clear" all work off one list. The detailed analysis charts
 // are opt-in: they answer narrower questions and would push the main charts
 // below the fold. Visibility is per session -- the page keeps no state between
 // loads.
+//
+// Beyond `render`, an entry may carry two optional hooks:
+//   consumesRange -- read getActiveRecords() instead of globalOffsets, and be
+//                    re-rendered when the selection changes. A chart that hosts
+//                    the brush (the scatter plot) must leave this off: it stays
+//                    on the whole run and draws the range as an overlay, or the
+//                    brush would collapse the chart it is drawn on.
+//   onClear       -- own cleanup, called by clearData(). Registering it is what
+//                    retires a module's hardcoded block in clearData().
+// Neither is used yet; the seven charts below predate the selection layer.
 const CHART_SECTIONS = [
     { key: 'scatter', sectionId: 'sectionScatter', titleKey: 'scatterTitle', defaultVisible: true, render: () => renderScatterChart() },
     { key: 'rolling', sectionId: 'sectionRolling', titleKey: 'rollingTitle', defaultVisible: false, render: () => renderRollingChart() },
     { key: 'returnMap', sectionId: 'sectionReturn', titleKey: 'returnTitle', defaultVisible: false, render: () => renderReturnChart() },
+    {
+        key: 'acf', sectionId: 'sectionAcf', titleKey: 'acfTitle', defaultVisible: false,
+        // Sits next to the return map on purpose: that one is this chart's lag 1,
+        // and the two agree there by construction.
+        consumesRange: true,
+        render: () => renderAcfChart(),
+        onClear: () => {
+            if (acfChart) { acfChart.destroy(); acfChart = null; }
+            const statsEl = document.getElementById('acfStats');
+            if (statsEl) statsEl.innerHTML = '';
+            const noteEl = document.getElementById('acfNote');
+            if (noteEl) { noteEl.innerText = ''; noteEl.style.display = 'none'; }
+        }
+    },
     { key: 'distribution', sectionId: 'sectionDistribution', titleKey: 'distTitle', defaultVisible: true, render: () => renderDistributionChart() },
+    {
+        key: 'delta', sectionId: 'sectionDelta', titleKey: 'deltaTitle', defaultVisible: false,
+        // The first range-aware module: it pairs neighbours *within the
+        // selection*, so a delta at the seam is never computed across the
+        // boundary of what the user asked to look at.
+        consumesRange: true,
+        render: () => renderDeltaChart(),
+        onClear: () => {
+            if (deltaChart) { deltaChart.destroy(); deltaChart = null; }
+            const statsEl = document.getElementById('deltaStats');
+            if (statsEl) statsEl.innerHTML = '';
+            const badgeEl = document.getElementById('deltaAxisCropBadge');
+            if (badgeEl) badgeEl.style.display = 'none';
+        }
+    },
     { key: 'pie', sectionId: 'sectionPie', titleKey: 'pieTitle', defaultVisible: true, render: () => renderPieChart() },
     { key: 'xacc', sectionId: 'sectionXacc', titleKey: 'xaccTitle', defaultVisible: true, render: () => renderXaccChart() },
     { key: 'combo', sectionId: 'sectionCombo', titleKey: 'comboTitle', defaultVisible: false, render: () => renderComboChart() }
@@ -464,6 +505,68 @@ function buildReturnPairs(offsets) {
     return pairs;
 }
 
+// -> one signed number per adjacent tap pair: how far this hit landed from where
+// the previous one did.
+//
+// Same adjacency rule as buildReturnPairs above, so the pair count here and the
+// "pairs" tile on the return map always describe the same set of steps. It
+// answers a different question than the return map does: the return map asks
+// whether the previous offset predicts the next one, this asks how large a step
+// the timing actually took -- a run can track its previous hit closely and still
+// take large steps, and the other way round.
+//
+// Plain numbers rather than { delta, hit } records: the histogram bins values,
+// and a bar's tooltip describes a bin rather than a hit, so the hit number would
+// be carried for nothing on runs with tens of thousands of pairs.
+function buildDeltas(records) {
+    const deltas = [];
+
+    for (let i = 1; i < records.length; i++) {
+        if (!isTapRecord(records[i - 1]) || !isTapRecord(records[i])) continue;
+        deltas.push(records[i][REC.VALUE] - records[i - 1][REC.VALUE]);
+    }
+
+    return deltas;
+}
+
+// -> { count, mean, meanAbs, medianAbs, stdDev }, or null when there is nothing
+// to pair up -- a single hit, or a selection holding only one tap.
+//
+// meanAbs is the headline: the average size of a step, direction ignored. The
+// signed mean is a different question -- it is the bias of the corrections, so a
+// run that corrects constantly in both directions can have a large meanAbs and a
+// mean of zero. Both are worth a tile because either one alone reads as "good
+// timing". sigma is the population standard deviation, matching
+// calculateStatistics() on the offsets.
+function computeDeltaStats(deltas) {
+    const count = deltas.length;
+    if (count === 0) return null;
+
+    let sum = 0;
+    let sumAbs = 0;
+    for (let i = 0; i < count; i++) {
+        sum += deltas[i];
+        sumAbs += Math.abs(deltas[i]);
+    }
+
+    const mean = sum / count;
+    const meanAbs = sumAbs / count;
+
+    let sumSquares = 0;
+    for (let i = 0; i < count; i++) sumSquares += Math.pow(deltas[i] - mean, 2);
+
+    // The plain median of the magnitudes, not a quantile like the axis range
+    // uses: medianAbs sits next to meanAbs and has to be the same kind of
+    // average, or the gap between the two says nothing.
+    const magnitudes = deltas.map(value => Math.abs(value)).sort((a, b) => a - b);
+    const mid = magnitudes.length >> 1;
+    const medianAbs = magnitudes.length % 2
+        ? magnitudes[mid]
+        : (magnitudes[mid - 1] + magnitudes[mid]) / 2;
+
+    return { count, mean, meanAbs, medianAbs, stdDev: Math.sqrt(sumSquares / count) };
+}
+
 // Pearson r between consecutive offsets. Negative means each hit tends to undo
 // the previous one (overcorrection), positive means offsets carry over.
 function computeCorrelation(pairs) {
@@ -487,6 +590,136 @@ function computeCorrelation(pairs) {
 
     return (sumXY / count - meanX * meanY) / (sigmaX * sigmaY);
 }
+
+// Contiguous stretches of tap records, as inclusive index pairs. This is the
+// series every lag in the autocorrelation reaches along: a miss, auto or
+// midspin in between means the two taps are not neighbours in time, so the
+// series has a hole there and no lag may step across it. Same hole the return
+// map's pairs stop at, which is what keeps the two modules' lag 1 identical.
+function buildTapRuns(records) {
+    const runs = [];
+    let first = -1;
+
+    for (let i = 0; i < records.length; i++) {
+        if (isTapRecord(records[i])) {
+            if (first < 0) first = i;
+        } else if (first >= 0) {
+            runs.push({ first, last: i - 1 });
+            first = -1;
+        }
+    }
+
+    if (first >= 0) runs.push({ first, last: records.length - 1 });
+
+    return runs;
+}
+
+// How far the autocorrelation looks. Enough to catch a repeating input pattern a
+// few bars long -- the thing the module exists to find -- and short enough that
+// the longest lag still has most of the run left to pair against.
+const ACF_MAX_LAG = 50;
+
+// Correlations closer together than this are the same number as far as any
+// reader is concerned, so a tie goes to the earlier lag. Without it a perfectly
+// periodic run reports whichever of its period and its harmonics happened to
+// land one float higher -- measured: for a 12-hit period-4 pattern, the period's
+// r came out exactly 1 while a harmonic's came out 1 + 2e-16, and the tile named
+// the harmonic. That is a property of the arithmetic, not of the run.
+const ACF_TIE_EPSILON = 1e-9;
+
+// -> [{ lag, r, pairs }] for lags 1..maxLag, or [] when the series is too short
+// to say anything. r is null when that lag had too few pairs, or when the values
+// there are all identical and a correlation has no meaning.
+//
+// Per lag, the two vectors (x_i) and (x_i+lag) are correlated against each
+// other, each standardised by its own mean and sigma -- the same estimator
+// computeCorrelation() uses for the return map. Lag 1 therefore reports the same
+// number as the return map's r: this module is that one number widened to every
+// lag, not a different statistic that would leave the two disagreeing on screen.
+//
+// The payoff is that the confidence band is exact rather than borrowed: under no
+// correlation, a Pearson r over n pairs has standard error 1/sqrt(n-1), so
+// 1.96/sqrt(n-1) is the band this statistic actually has. Because n shrinks with
+// the lag, so does the band's width -- the funnel in the plot is the honest
+// version of the flat band a textbook ACF plot draws.
+function computeAutocorrelation(records, maxLag = ACF_MAX_LAG) {
+    const runs = buildTapRuns(records);
+    const total = runs.reduce((sum, run) => sum + (run.last - run.first + 1), 0);
+
+    // Below three points no lag can produce the two pairs a correlation needs.
+    if (total < 3) return [];
+
+    const results = [];
+
+    for (let lag = 1; lag <= maxLag; lag++) {
+        let pairs = 0;
+        let sumA = 0, sumB = 0, sumAB = 0, sumAA = 0, sumBB = 0;
+
+        runs.forEach(run => {
+            for (let i = run.first; i + lag <= run.last; i++) {
+                const a = records[i][REC.VALUE];
+                const b = records[i + lag][REC.VALUE];
+                pairs++;
+                sumA += a;
+                sumB += b;
+                sumAB += a * b;
+                sumAA += a * a;
+                sumBB += b * b;
+            }
+        });
+
+        if (pairs < 2) {
+            results.push({ lag, r: null, pairs });
+            continue;
+        }
+
+        const meanA = sumA / pairs;
+        const meanB = sumB / pairs;
+        const sigmaA = Math.sqrt(Math.max(0, sumAA / pairs - meanA * meanA));
+        const sigmaB = Math.sqrt(Math.max(0, sumBB / pairs - meanB * meanB));
+        const sigmaProduct = sigmaA * sigmaB;
+
+        results.push({
+            lag,
+            r: sigmaProduct > 0 ? (sumAB / pairs - meanA * meanB) / sigmaProduct : null,
+            pairs
+        });
+    }
+
+    return results;
+}
+
+// -> the 95% half-width of the band at one lag, or null where there is no r to
+// test. null when a lag holds fewer than three pairs: the standard error is
+// 1/sqrt(n-1), which says nothing at n <= 2.
+function getAcfBandHalfWidth(pairs) {
+    return pairs > 2 ? 1.96 / Math.sqrt(pairs - 1) : null;
+}
+
+// -> the lag furthest from the band, ignoring lag 1: { lag, r, band } or null
+// when nothing beyond lag 1 stands out. Lag 1 is excluded because adjacent hits
+// tracking each other is the baseline the return map already reports, not a
+// finding -- the interesting lags are the ones further out, where a peak means a
+// repeating pattern rather than momentum.
+//
+// Asking for a lag that actually crosses its band is deliberate: the largest |r|
+// at a far lag is usually a small number, and reporting "strongest lag: 37,
+// r = 0.03" would look like a result while saying nothing.
+function getStrongestAcfLag(results) {
+    let best = null;
+
+    results.forEach(entry => {
+        if (entry.lag < 2 || entry.r === null) return;
+        const halfWidth = getAcfBandHalfWidth(entry.pairs);
+        if (halfWidth === null || Math.abs(entry.r) <= halfWidth) return;
+        if (!best || Math.abs(entry.r) > Math.abs(best.r) + ACF_TIE_EPSILON) {
+            best = { lag: entry.lag, r: entry.r, band: halfWidth };
+        }
+    });
+
+    return best;
+}
+
 
 function getReturnVerdictKey(correlation) {
     if (correlation === null) return null;
@@ -558,14 +791,23 @@ function calculateStatistics() {
     return { mean, stdDev };
 }
 
-// Axis range for the distribution histogram: median +/- 4 robust sigma, with
-// robust sigma = IQR / 1.349.  Taking the raw min/max lets a handful of extreme
-// hits stretch the axis until the bulk of the data collapses into one or two
-// bins -- exactly the part the histogram exists to show.  On a clean run nothing
-// lies beyond 4 sigma, so this degrades to the full data range: the axis is only
-// ever cropped when there really is something far outside.
+// Axis range for a histogram of the offsets themselves. The rule lives in
+// calculateRobustValueRange(); this is the record-shaped entry point for it.
 function calculateRobustAxisRange(offsets) {
-    const validValues = offsets.map(item => item[0]).filter(val => !isNaN(val)).sort((a, b) => a - b);
+    return calculateRobustValueRange(offsets.map(item => item[0]));
+}
+
+// Median +/- 4 robust sigma, with robust sigma = IQR / 1.349.  Taking the raw
+// min/max lets a handful of extreme values stretch the axis until the bulk of
+// the data collapses into one or two bins -- exactly the part the histogram
+// exists to show.  On a clean run nothing lies beyond 4 sigma, so this degrades
+// to the full data range: the axis is only ever cropped when there really is
+// something far outside.
+//
+// Plain numbers rather than records, so a derived series (the delta histogram)
+// can be charted with the same rule as the offsets they came from.
+function calculateRobustValueRange(values) {
+    const validValues = values.filter(val => !isNaN(val)).sort((a, b) => a - b);
     if (validValues.length === 0) return null;
 
     const quantile = (q) => {
@@ -593,8 +835,18 @@ function calculateRobustAxisRange(offsets) {
     };
 }
 
+// Bins the offsets of a record list. See binValues() for the binning itself.
 function createHistogramData(offsets, binCount = 60, axisRange = null) {
-    const validOffsets = offsets.map(item => item[0]).filter(val => !isNaN(val));
+    return binValues(offsets.map(item => item[0]), binCount, axisRange);
+}
+
+// -> [{ start, end, center, count }], at most binCount bins, covering axisRange
+// when one is given and the data's own extent otherwise.
+//
+// Plain numbers rather than records, so a derived series (the delta histogram)
+// reuses the same binning as the offsets it was computed from.
+function binValues(values, binCount = 60, axisRange = null) {
+    const validOffsets = values.filter(val => !isNaN(val));
     if (validOffsets.length === 0) return [];
 
     let min, max;
@@ -856,6 +1108,357 @@ function renderDistributionChart() {
                     }
                 },
                 annotation: { annotations: annotationsConfig }
+            }
+        }
+    });
+}
+
+function renderDeltaChart() {
+    // The active selection, not globalOffsets: this module is range-aware, and
+    // pairing up neighbours across the edge of a selection would report a step
+    // the user did not ask about -- the seam between two regions is not a step
+    // in anyone's timing.
+    const records = getActiveRecords();
+    if (records.length === 0) return;
+
+    const unit = getUnit();
+    const deltas = buildDeltas(records);
+    const stats = computeDeltaStats(deltas);
+    const histogramData = binValues(deltas, 60, calculateRobustValueRange(deltas));
+
+    // A selection holding only one tap, or a run whose offsets are all
+    // non-numeric, yields no bins. The plot is empty then, so fall back to a
+    // placeholder axis -- same treatment as the distribution chart.
+    const hasBins = histogramData.length > 0;
+    const xMin = hasBins ? histogramData[0].start : 0;
+    const xMax = hasBins ? histogramData[histogramData.length - 1].end : 1;
+
+    const statsEl = document.getElementById('deltaStats');
+    if (statsEl) {
+        statsEl.innerHTML = `
+            <div class="stat-tile">
+                <div class="label">${t('deltaPairs')}</div>
+                <div class="value">${stats ? stats.count : 0}</div>
+            </div>
+            <div class="stat-tile">
+                <div class="label">${t('deltaMeanAbs')}</div>
+                <div class="value" style="color: #ffffff;">${stats ? stats.meanAbs.toFixed(2) + unit : '-'}</div>
+            </div>
+            <div class="stat-tile">
+                <div class="label">${t('deltaMedianAbs')}</div>
+                <div class="value" style="color: #ffffff;">${stats ? stats.medianAbs.toFixed(2) + unit : '-'}</div>
+            </div>
+            <div class="stat-tile">
+                <div class="label">${t('deltaMean')}</div>
+                <div class="value" style="color: #ffffff;">${stats ? (stats.mean >= 0 ? '+' : '') + stats.mean.toFixed(2) + unit : '-'}</div>
+            </div>
+            <div class="stat-tile">
+                <div class="label">${t('deltaStdDev')}</div>
+                <div class="value" style="color: #ffffff;">${stats ? stats.stdDev.toFixed(2) + unit : '-'}</div>
+            </div>
+        `;
+    }
+
+    // Steps the robust axis left outside, reported rather than silently clipped
+    // -- same behaviour as the distribution chart's badge.
+    const outsideCount = deltas.reduce((count, value) =>
+        (value < xMin || value > xMax) ? count + 1 : count, 0);
+    const badgeEl = document.getElementById('deltaAxisCropBadge');
+    if (badgeEl) {
+        if (outsideCount > 0) {
+            badgeEl.innerText = (t('axisClipped') || '')
+                .replace('{min}', xMin.toFixed(1))
+                .replace('{max}', xMax.toFixed(1))
+                .replace('{unit}', unit)
+                .replace('{count}', outsideCount);
+            badgeEl.style.display = 'block';
+        } else {
+            badgeEl.style.display = 'none';
+        }
+    }
+
+    if (deltaChart) deltaChart.destroy();
+
+    const ctx = document.getElementById('deltaChart').getContext('2d');
+
+    const annotationsConfig = {
+        // Zero reads as "this hit landed where the previous one did": the spike
+        // a run makes when it is not correcting at all, and the line the
+        // histogram's asymmetry is measured against.
+        zeroLine: {
+            type: 'line',
+            xMin: 0, xMax: 0,
+            borderColor: 'rgba(255, 255, 255, 0.75)',
+            borderWidth: 1.5,
+            label: {
+                display: true,
+                content: 'Δ = 0',
+                position: 'start',
+                backgroundColor: 'rgba(0,0,0,0.6)',
+                color: '#fff',
+                font: { size: 10 }
+            }
+        }
+    };
+
+    if (stats) {
+        annotationsConfig.meanLine = {
+            type: 'line',
+            xMin: stats.mean, xMax: stats.mean,
+            borderColor: '#ffb74d',
+            borderWidth: 2,
+            borderDash: [5, 5],
+            label: {
+                display: true,
+                content: `μΔ = ${stats.mean >= 0 ? '+' : ''}${stats.mean.toFixed(2)}${unit}`,
+                position: 'end',
+                backgroundColor: 'rgba(230, 124, 11, 0.8)',
+                color: '#fff',
+                font: { size: 10, weight: 'bold' },
+                yAdjust: -10
+            }
+        };
+    }
+
+    // Indigo, to keep this histogram from reading as the offset distribution's
+    // green one when both are on screen -- the two axes carry different units of
+    // meaning even though both are milliseconds.
+    deltaChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            datasets: [{
+                label: t('deltaTitle'),
+                data: histogramData.map(bin => ({ x: bin.center, y: bin.count })),
+                backgroundColor: 'rgba(121, 134, 203, 0.6)',
+                borderColor: 'rgba(121, 134, 203, 0.85)',
+                borderWidth: 1,
+                barPercentage: 1.0,
+                categoryPercentage: 1.0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            layout: {
+                padding: { top: 25, right: 15, bottom: 5, left: 15 }
+            },
+            scales: {
+                x: {
+                    type: 'linear',
+                    min: xMin,
+                    max: xMax,
+                    title: { display: true, text: t('deltaX') + ` (${unit.trim()})`, color: '#aaa' },
+                    grid: { color: '#252525' },
+                    ticks: {
+                        color: '#bbb',
+                        maxTicksLimit: 10,
+                        callback: function(value) { return value.toFixed(1); }
+                    }
+                },
+                y: {
+                    title: { display: true, text: t('frequency'), color: '#aaa' },
+                    grid: { color: '#252525' },
+                    ticks: { color: '#bbb' },
+                    beginAtZero: true
+                }
+            },
+            plugins: {
+                // One series: the section title names it, so no legend box.
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return `${t('frequency')}: ${context.raw.y}`;
+                        }
+                    }
+                },
+                annotation: { annotations: annotationsConfig }
+            }
+        }
+    });
+}
+
+function renderAcfChart() {
+    // The active selection, like the delta module: a correlation is a property of
+    // the stretch being looked at, and a lag that reached outside it would be
+    // measuring a different run.
+    const records = getActiveRecords();
+    if (records.length === 0) return;
+
+    const results = computeAutocorrelation(records);
+    const lag1 = results.length > 0 ? results[0] : null;
+    const strongest = getStrongestAcfLag(results);
+
+    const statsEl = document.getElementById('acfStats');
+    if (statsEl) {
+        statsEl.innerHTML = `
+            <div class="stat-tile">
+                <div class="label">${t('acfPairs')}</div>
+                <div class="value">${lag1 ? lag1.pairs : 0}</div>
+            </div>
+            <div class="stat-tile">
+                <div class="label">${t('acfLag1')}</div>
+                <div class="value" style="color: #ffffff;">${lag1 && lag1.r !== null ? lag1.r.toFixed(3) : '-'}</div>
+            </div>
+            <div class="stat-tile">
+                <div class="label">${t('acfStrongest')}</div>
+                <div class="value" style="color: #ffffff;">${strongest ? `lag ${strongest.lag}` : '-'}</div>
+            </div>
+            <div class="stat-tile">
+                <div class="label">${t('acfStrongest')} r</div>
+                <div class="value" style="color: #ffffff;">${strongest ? strongest.r.toFixed(3) : '-'}</div>
+            </div>
+        `;
+    }
+
+    // Fifty lags are fifty chances for one to cross its band on noise alone, and
+    // at 5% that is two or three of them. Said out loud next to the plot, because
+    // a reader who finds a single spike at lag 34 has no way to know that from
+    // the picture.
+    const noteEl = document.getElementById('acfNote');
+    if (noteEl) {
+        noteEl.innerText = results.length > 0 ? t('acfMultiTest') : '';
+        noteEl.style.display = results.length > 0 ? 'block' : 'none';
+    }
+
+    if (acfChart) acfChart.destroy();
+
+    const ctx = document.getElementById('acfChart').getContext('2d');
+
+    const bandHalfWidth = (entry) => getAcfBandHalfWidth(entry.pairs);
+    const maxAbsR = results.reduce((max, entry) =>
+        entry.r === null ? max : Math.max(max, Math.abs(entry.r)), 0);
+    const maxBand = results.reduce((max, entry) => {
+        const halfWidth = bandHalfWidth(entry);
+        return halfWidth === null ? max : Math.max(max, halfWidth);
+    }, 0);
+
+    // A full +/-1 axis would squash every real autocorrelation in timing data into
+    // the middle and leave the band a hairline on the zero line. The window is
+    // whatever the data and the band actually occupy, floored at +/-0.2 so a flat
+    // run does not blow a 0.01 wobble up to full height, and capped at +/-1
+    // because a correlation cannot leave it.
+    const span = Math.min(1, Math.max(0.2, maxAbsR * 1.3, maxBand * 1.3));
+
+    acfChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: results.map(entry => String(entry.lag)),
+            datasets: [
+                {
+                    label: t('acfTitle'),
+                    data: results.map(entry => entry.r),
+                    backgroundColor: 'rgba(0, 188, 212, 0.7)',
+                    borderColor: 'rgba(0, 188, 212, 0.9)',
+                    borderWidth: 1,
+                    barPercentage: 0.7,
+                    categoryPercentage: 1.0,
+                    order: 2
+                },
+                {
+                    label: t('acfBand'),
+                    data: results.map(entry => bandHalfWidth(entry)),
+                    type: 'line',
+                    borderColor: 'rgba(255, 255, 255, 0.35)',
+                    borderWidth: 1,
+                    borderDash: [4, 4],
+                    pointRadius: 0,
+                    fill: false,
+                    order: 0
+                },
+                {
+                    // Second half of the band, filled towards the first: one
+                    // shaded funnel rather than two loose lines. Kept out of the
+                    // legend and the tooltip, which would otherwise name the same
+                    // band twice.
+                    label: t('acfBand'),
+                    data: results.map(entry => {
+                        const halfWidth = bandHalfWidth(entry);
+                        return halfWidth === null ? null : -halfWidth;
+                    }),
+                    type: 'line',
+                    borderColor: 'rgba(255, 255, 255, 0.35)',
+                    borderWidth: 1,
+                    borderDash: [4, 4],
+                    pointRadius: 0,
+                    fill: { target: 1 },
+                    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                    order: 1
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            layout: {
+                padding: { top: 25, right: 15, bottom: 5, left: 15 }
+            },
+            scales: {
+                x: {
+                    title: { display: true, text: t('acfX'), color: '#aaa' },
+                    grid: { color: '#252525' },
+                    ticks: {
+                        color: '#bbb',
+                        // The labels are already the lag numbers; this only thins
+                        // them out when 50 ticks would collide.
+                        maxTicksLimit: 12
+                    }
+                },
+                y: {
+                    min: -span,
+                    max: span,
+                    title: { display: true, text: t('returnCorr'), color: '#aaa' },
+                    grid: { color: '#252525' },
+                    ticks: { color: '#bbb', callback: function(value) { return value.toFixed(2); } }
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: {
+                        color: '#fff',
+                        boxWidth: 12,
+                        font: { size: 14 },
+                        padding: 15,
+                        filter: (item) => item.datasetIndex !== 2
+                    }
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    filter: (item) => item.datasetIndex !== 2,
+                    callbacks: {
+                        title: (items) => `lag ${items[0].label}`,
+                        label: (context) => {
+                            if (context.datasetIndex === 0) {
+                                return context.parsed.y === null || context.parsed.y === undefined
+                                    ? t('acfPairs') + ': 0'
+                                    : `${t('returnCorr')}: ${context.parsed.y.toFixed(3)}`;
+                            }
+                            return `${t('acfBand')}: ±${Math.abs(context.parsed.y).toFixed(3)}`;
+                        },
+                        afterLabel: (context) => {
+                            const entry = results[context.dataIndex];
+                            return context.datasetIndex === 0 && entry
+                                ? `${t('acfPairs')}: ${entry.pairs}`
+                                : '';
+                        }
+                    }
+                },
+                annotation: {
+                    annotations: {
+                        // Sign boundary: a bar above it means the two lags move
+                        // together, below it means each undoes the other.
+                        zeroR: {
+                            type: 'line',
+                            yMin: 0, yMax: 0,
+                            borderColor: 'rgba(255, 255, 255, 0.25)',
+                            borderWidth: 1
+                        }
+                    }
+                }
             }
         }
     });
@@ -1808,6 +2411,21 @@ function clearData() {
     maxOffsetFilter = null;
     ignoreOutliers = false;
 
+    // The selection is derived from the run and dies with it. Dropped here
+    // rather than left to the next import to invalidate, so that anything
+    // reading the range on an empty page sees "whole run" instead of a stale
+    // span of hit numbers.
+    activeRange = null;
+    invalidateSelection();
+
+    // Give the modules their own cleanup before the hardcoded block below runs.
+    // Nothing registers onClear yet: the seven original charts still clear
+    // themselves further down, and each one gives up its block as it moves onto
+    // the hook.
+    CHART_SECTIONS.forEach(entry => {
+        if (typeof entry.onClear === 'function') entry.onClear();
+    });
+
     const filterContainer = document.getElementById('scatterFilterContainer');
     if (filterContainer) filterContainer.style.display = 'none';
     const xaccFilterContainer = document.getElementById('xaccFilterContainer');
@@ -1907,16 +2525,173 @@ function processOffsetRecords(offsets, timeFirst) {
     });
 }
 
+// Named columns of a record, so analysis code reads as data instead of as array
+// arithmetic. A record is built in processOffsetRecords() above and every
+// column is always present, so REC.INDEX and REC.TIME are safe to compare
+// against without a length check.
+const REC = { VALUE: 0, JUDGE: 1, RAW: 2, XP: 3, INDEX: 4, TIME: 5 };
+
+// ---------------------------------------------------------------------------
+// Active selection
+//
+// The one place the page records which part of the run is under analysis.
+// activeRange is an inclusive span of *hit numbers* -- the value in REC.INDEX,
+// never an array position -- so a range means the same thing whichever control
+// produced it, and "Hit 12000-12500" still means those hits after a second
+// range is picked on top of it.
+//
+// Records keep travelling as the same tuples globalOffsets holds, because every
+// analysis helper in this file takes that shape (createHistogramData,
+// computeRollingStats, buildReturnPairs, computePerfectRuns). Analysis code
+// that wants to be range-aware reads getActiveRecords() and gets tuples back,
+// so one implementation serves both the whole run and a slice of it.
+//
+// Nothing consumes the range yet: the charts predate this layer and still read
+// globalOffsets directly. They migrate one at a time. A chart the user draws the
+// selection *on* -- the scatter plot -- must stay on the whole run and draw the
+// range as an overlay, otherwise brushing collapses the very chart being
+// brushed; see `consumesRange` on CHART_SECTIONS.
+// ---------------------------------------------------------------------------
+let activeRange = null;        // null = whole run, { start, end } = inclusive hit numbers
+let selectionVersion = 0;      // bumped whenever activeRange or globalOffsets changes
+let activeRecordsCache = null; // { version, records, values }: derived data for one version
+let selectionRenderPending = false; // a frame is already booked for the charts
+
+// Every change to the selection or to globalOffsets goes through here, so the
+// memo above can never outlive the data it was built from. Both assignment
+// sites for globalOffsets -- clearData() and LoadFile() -- call it.
+function invalidateSelection() {
+    selectionVersion++;
+    activeRecordsCache = null;
+}
+
+function getActiveRange() {
+    return activeRange;
+}
+
+// Inclusive end, so the count is not off by one: 12000-12500 is 501 hits.
+// Counted from the records rather than from the range bounds, so the count can
+// never disagree with what getActiveRecords() hands back -- and the whole-run
+// case costs nothing, since that is globalOffsets itself.
+function getActiveCount() {
+    return getActiveRecords().length;
+}
+
+// The data entry point for every range-aware module.
+function getActiveRecords() {
+    const cached = activeRecordsCache;
+    if (cached && cached.version === selectionVersion) return cached.records;
+
+    // REC.INDEX is the record's position in globalOffsets by construction (see
+    // processOffsetRecords), so a span of hit numbers is always a contiguous
+    // slice: no scan, and no per-record copy -- the whole-run case hands back
+    // globalOffsets itself.
+    const records = activeRange
+        ? globalOffsets.slice(activeRange.start, activeRange.end + 1)
+        : globalOffsets;
+
+    activeRecordsCache = { version: selectionVersion, records, values: null };
+    return records;
+}
+
+// Flat numbers for the active selection. Deliberately not called
+// getActiveOffsets(): throughout this file "offsets" is the tuple array (see
+// the parameter of processOffsetRecords, createHistogramData,
+// computeRollingStats, buildReturnPairs), and a function of that name returning
+// plain numbers would break the next caller silently.
+function getActiveValues() {
+    const records = getActiveRecords();
+    if (activeRecordsCache.values) return activeRecordsCache.values;
+
+    activeRecordsCache.values = records.map(item => item[REC.VALUE]);
+    return activeRecordsCache.values;
+}
+
+// The single write point for the selection: a brush on the scatter plot, a click
+// on the timeline and a "whole song" button all land here, so clamping and
+// fan-out cannot drift apart between them.
+//
+// `preview: true` is for a drag in flight. Coalescing to a frame is not enough
+// on its own -- a preview would still re-run every range-aware analysis once per
+// frame, each one a full pass over tens of thousands of hits -- so a preview
+// moves the selection and leaves the charts to the commit that follows the
+// pointer release, while the caller draws its own cheap live feedback (the
+// dragged box, a running hit count).
+function setActiveRange(start, end, options) {
+    const last = globalOffsets.length - 1;
+    let from = Math.round(Number(start));
+    let to = Math.round(Number(end));
+
+    // Nothing to select against, or a range that is not two numbers.
+    if (last < 0 || !Number.isFinite(from) || !Number.isFinite(to)) {
+        clearActiveRange();
+        return;
+    }
+
+    if (from > to) [from, to] = [to, from];
+    activeRange = {
+        start: Math.max(0, Math.min(from, last)),
+        end: Math.max(0, Math.min(to, last))
+    };
+    invalidateSelection();
+
+    // A range equal to the one already selected still asks for a re-render: a
+    // drag commits with the span it was previewing, and skipping that render
+    // would leave the charts a frame behind the selection.
+    if (!(options && options.preview)) scheduleSelectionRender();
+}
+
+function clearActiveRange() {
+    const hadRange = activeRange !== null;
+    activeRange = null;
+    invalidateSelection();
+
+    if (hadRange) scheduleSelectionRender();
+}
+
+// Range-aware charts re-render at most once per frame, and only the ones on
+// screen, so a drag that moves the selection sixty times a second still costs one
+// analysis pass per frame instead of sixty. The selection summary belongs in the
+// same frame, next to the render pass.
+function scheduleSelectionRender() {
+    if (selectionRenderPending) return;
+
+    // The mark is raised before the frame is asked for and lowered by the
+    // callback itself. Storing the handle instead would make the coalescing
+    // depend on requestAnimationFrame being asynchronous: a synchronous one (as
+    // in the test harness) would let the callback clear the handle and then have
+    // the assignment put it straight back, and the fan-out would stop for good
+    // without ever failing loudly.
+    selectionRenderPending = true;
+
+    requestAnimationFrame(() => {
+        selectionRenderPending = false;
+        CHART_SECTIONS.forEach(entry => {
+            if (entry.consumesRange && entry.visible) entry.render();
+        });
+    });
+}
+
 function hasTimelineData() {
-    return globalOffsets.some(item => Number.isFinite(item[5]) && item[5] >= 0);
+    return globalOffsets.some(item => Number.isFinite(item[REC.TIME]) && item[REC.TIME] >= 0);
+}
+
+// Hit numbers come from REC.INDEX, never from the array position: under a
+// selection the array begins at the first selected hit, and renumbering from
+// there would put the axis, the selection summary and the timeline on three
+// different numbering schemes for the same hit.
+function getRecordHitNumber(item, index) {
+    return Number.isFinite(item[REC.INDEX]) ? item[REC.INDEX] + 1 : index + 1;
 }
 
 function getRecordX(item, index) {
-    return Number.isFinite(item[5]) && item[5] >= 0 ? item[5] : index + 1;
+    return Number.isFinite(item[REC.TIME]) && item[REC.TIME] >= 0
+        ? item[REC.TIME]
+        : getRecordHitNumber(item, index);
 }
 
 function getChartX(item, index, useHitAxis) {
-    return useHitAxis ? index + 1 : getRecordX(item, index);
+    return useHitAxis ? getRecordHitNumber(item, index) : getRecordX(item, index);
 }
 
 function readString(view, offset) {
@@ -2208,6 +2983,13 @@ async function LoadFile(file) {
         }
 
         globalOffsets = data.offsets;
+
+        // Hit numbers from the previous file mean nothing against this one, and
+        // a stale range is invisible when it goes wrong: every range-aware chart
+        // would simply come up empty and the import would look like it failed.
+        activeRange = null;
+        invalidateSelection();
+
         currentMetaData = {
             versionText: data.versionText,
             songName: data.songName,

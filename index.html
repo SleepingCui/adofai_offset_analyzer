@@ -151,6 +151,18 @@
             </div>
         </div>
 
+        <!-- Autocorrelation Section -->
+        <div class="chart-section" id="sectionAcf" hidden>
+            <h3 data-i18n="acfTitle">自相关图</h3>
+            <div class="stat-tiles" id="acfStats"></div>
+            <div class="chart-wrapper">
+                <div class="axis-crop-badge" id="acfNote"></div>
+                <div class="chart-canvas-box">
+                    <canvas id="acfChart"></canvas>
+                </div>
+            </div>
+        </div>
+
         <!-- Normal Distribution Chart Section -->
         <div class="chart-section" id="sectionDistribution" hidden>
             <h3 data-i18n="distTitle">正态分布图</h3>
@@ -159,6 +171,18 @@
                 <div class="axis-crop-badge" id="distAxisCropBadge"></div>
                 <div class="chart-canvas-box">
                     <canvas id="distributionChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Offset Difference (Delta) Histogram Section -->
+        <div class="chart-section" id="sectionDelta" hidden>
+            <h3 data-i18n="deltaTitle">相邻偏移量差值分布</h3>
+            <div class="stat-tiles" id="deltaStats"></div>
+            <div class="chart-wrapper">
+                <div class="axis-crop-badge" id="deltaAxisCropBadge"></div>
+                <div class="chart-canvas-box">
+                    <canvas id="deltaChart"></canvas>
                 </div>
             </div>
         </div>
