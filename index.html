@@ -19,7 +19,7 @@
     <h1 class="page-title">ADOFAI Offset Analyzer</h1>
     <div class="header-panel">
         <div class="button-group">
-            <div class="file-input-wrapper">
+            <div class="file-input-wrapper" id="fileInputWrapper">
                 <button class="btn" data-i18n="importFile">导入文件</button>
                 <input type="file" id="jsonFile" accept=".json,.tlog,.tlog.gz,.gz,.crpl2">
             </div>
@@ -38,8 +38,14 @@
         </div>
     </div>
 
-    <div class="stats-grid">
-        <div class="stats-card" style="border-left-color: #2196F3;">
+    <div class="empty-state" id="emptyState" hidden>
+        <div class="empty-title" data-i18n="emptyTitle">还没有数据</div>
+        <div class="empty-hint" data-i18n="emptyHint">导入或拖入 TimingShow 日志文件，图表会显示在这里</div>
+        <button class="btn" id="emptyImport" data-i18n="importFile">导入文件</button>
+    </div>
+
+    <div class="stats-grid" id="statsGrid" hidden>
+        <div class="stats-card" style="border-left-color: #2196f3;">
             <h3 data-i18n="totalHits">总按键数</h3>
             <div class="value" id="statTotal">-</div>
         </div>
@@ -51,11 +57,11 @@
             <h3 data-i18n="ur">UR (不稳定度)</h3>
             <div class="value" id="statUR">-</div>
         </div>
-        <div class="stats-card" style="border-left-color: #60FF4E;">
+        <div class="stats-card" style="border-left-color: #60ff4e;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
                 <h3 id="ratioLabel" style="margin: 0;">Ratio</h3>
-                <label style="font-size: 0.75rem; color: #aaa; cursor: pointer; display: flex; align-items: center; gap: 4px;">
-                    <input type="checkbox" id="toggleXPerfectRatio" style="cursor: pointer;">
+                <label style="font-size: 0.75rem; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                    <input type="checkbox" id="toggleXPerfectRatio" style="cursor: pointer; accent-color: var(--accent-color);">
                     <span data-i18n="xperfectRatio">XPerfect Ratio</span>
                 </label>
             </div>
@@ -63,41 +69,44 @@
         </div>
     </div>
 
-    <div class="margin-counts-box" id="marginCountsBox">
+    <div class="margin-counts-box" id="marginCountsBox" hidden>
         <div class="numbers-group" id="pureNumbersContainer">
         </div>
         <div class="xacc-display" id="xaccValue">XACC: -</div>
     </div>
 
-    <div class="charts-container">
-        <div class="chart-section">
+    <div class="charts-container" id="chartsContainer">
+        <!-- Sections stay hidden until there is data to plot; see
+             updatePageState(). -->
+        <!-- Scatter Chart Section -->
+        <div class="chart-section" id="sectionScatter" hidden>
             <h3 data-i18n="scatterTitle">偏移量散点图</h3>
             <div class="chart-wrapper">
                 <div class="scatter-filter-container" id="scatterFilterContainer" style="display: none;">
                     <div class="outlier-filter-group">
-                        <label style="color: #aaa; cursor: pointer; display: flex; align-items: center; gap: 4px;">
-                            <input type="checkbox" id="scatterUseHitCheckbox" style="cursor: pointer;">
+                        <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                            <input type="checkbox" id="scatterUseHitCheckbox" style="cursor: pointer; accent-color: var(--accent-color);">
                             <span data-i18n="useHitAxis">使用 Hit 作为横轴</span>
                         </label>
-                        <label style="color: #aaa; cursor: pointer; display: flex; align-items: center; gap: 4px;">
-                            <input type="checkbox" id="ignoreOutliersCheckbox" style="cursor: pointer;">
+                        <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                            <input type="checkbox" id="ignoreOutliersCheckbox" style="cursor: pointer; accent-color: var(--accent-color);">
                             <span data-i18n="ignoreOutliers">忽略离群点</span>
                         </label>
-                        <label class="point-size-control">
+                        <label class="range-control">
                             <span data-i18n="pointSize">点大小</span>
                             <input type="range" id="pointSizeSlider" min="1" max="10" step="1" value="3">
-                            <span id="pointSizeValue" class="point-size-value">3 px</span>
+                            <span id="pointSizeValue" class="range-value">3 px</span>
                         </label>
                         <span id="ignoredCountBadge" class="ignored-count-badge"></span>
                     </div>
 
                     <div class="range-inputs">
-                        <label style="color: #aaa;" data-i18n="rangeFilter">范围筛选:</label>
+                        <label data-i18n="rangeFilter">范围筛选:</label>
                         <input type="number" id="minOffsetInput" placeholder="-∞" step="any" class="filter-input">
-                        <span id="rangeUnit1" style="color: #aaa;">ms</span>
-                        <span style="color: #aaa;">~</span>
+                        <span id="rangeUnit1">ms</span>
+                        <span>~</span>
                         <input type="number" id="maxOffsetInput" placeholder="+∞" step="any" class="filter-input">
-                        <span id="rangeUnit2" style="color: #aaa;">ms</span>
+                        <span id="rangeUnit2">ms</span>
                         <button class="btn-sm" id="btnResetRange" data-i18n="reset">重置</button>
                         <span id="inRangeCountBadge" class="in-range-count-badge"></span>
                     </div>
@@ -108,18 +117,54 @@
             </div>
         </div>
 
-        <div class="chart-section">
-            <h3 data-i18n="distTitle">正态分布图</h3>
-            <div class="distribution-stats" id="distributionStats"></div>
+        <!-- Rolling Mean / Sigma Band Chart Section -->
+        <div class="chart-section" id="sectionRolling" hidden>
+            <h3 data-i18n="rollingTitle">滑动均值与波动带</h3>
+            <div class="stat-tiles" id="rollingStats"></div>
             <div class="chart-wrapper">
-                <div class="dist-axis-crop-badge" id="distAxisCropBadge"></div>
+                <div class="rolling-filter-container" id="rollingFilterContainer" style="display: none;">
+                    <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                        <input type="checkbox" id="rollingUseHitCheckbox" style="cursor: pointer; accent-color: var(--accent-color);">
+                        <span data-i18n="useHitAxis">使用 Hit 作为横轴</span>
+                    </label>
+                    <label class="range-control">
+                        <span data-i18n="rollingWindow">窗口 (键)</span>
+                        <input type="range" id="rollingWindowSlider" min="5" max="500" step="5" value="50">
+                        <span id="rollingWindowValue" class="range-value">50</span>
+                    </label>
+                </div>
+                <div class="chart-canvas-box">
+                    <canvas id="rollingChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Return Map Chart Section -->
+        <div class="chart-section" id="sectionReturn" hidden>
+            <h3 data-i18n="returnTitle">相邻两键偏移量关系</h3>
+            <div class="stat-tiles" id="returnStats"></div>
+            <div class="chart-wrapper">
+                <div class="axis-crop-badge" id="returnAxisCropBadge"></div>
+                <div class="chart-canvas-box">
+                    <canvas id="returnChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Normal Distribution Chart Section -->
+        <div class="chart-section" id="sectionDistribution" hidden>
+            <h3 data-i18n="distTitle">正态分布图</h3>
+            <div class="stat-tiles" id="distributionStats"></div>
+            <div class="chart-wrapper">
+                <div class="axis-crop-badge" id="distAxisCropBadge"></div>
                 <div class="chart-canvas-box">
                     <canvas id="distributionChart"></canvas>
                 </div>
             </div>
         </div>
 
-        <div class="chart-section">
+        <!-- Judgment Breakdown Pie Chart Section -->
+        <div class="chart-section" id="sectionPie" hidden>
             <h3 data-i18n="pieTitle">判定分布比例</h3>
             <div class="chart-wrapper">
                 <div class="chart-canvas-box">
@@ -128,12 +173,13 @@
             </div>
         </div>
 
-        <div class="chart-section">
+        <!-- XACC Progression Chart Section -->
+        <div class="chart-section" id="sectionXacc" hidden>
             <h3 data-i18n="xaccTitle">XACC变化曲线</h3>
             <div class="chart-wrapper">
                 <div class="xacc-filter-container" id="xaccFilterContainer" style="display: none;">
-                    <label style="color: #aaa; cursor: pointer; display: flex; align-items: center; gap: 4px;">
-                        <input type="checkbox" id="xaccUseHitCheckbox" style="cursor: pointer;">
+                    <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                        <input type="checkbox" id="xaccUseHitCheckbox" style="cursor: pointer; accent-color: var(--accent-color);">
                         <span data-i18n="useHitAxis">使用 Hit 作为横轴</span>
                     </label>
                 </div>
@@ -142,12 +188,50 @@
                 </div>
             </div>
         </div>
+
+        <!-- Consecutive Perfect Streak Strip -->
+        <div class="chart-section" id="sectionCombo" hidden>
+            <h3 data-i18n="comboTitle">连续 Perfect 热力条</h3>
+            <div class="stat-tiles" id="comboStats"></div>
+            <div class="chart-wrapper chart-wrapper--strip">
+                <div class="combo-filter-container" id="comboFilterContainer" style="display: none;">
+                    <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                        <input type="checkbox" id="comboUseHitCheckbox" style="cursor: pointer; accent-color: var(--accent-color);">
+                        <span data-i18n="useHitAxis">使用 Hit 作为横轴</span>
+                    </label>
+                </div>
+                <div class="chart-canvas-box">
+                    <canvas id="comboChart"></canvas>
+                </div>
+                <div class="combo-legend" id="comboLegend"></div>
+            </div>
+        </div>
     </div>
 
     <div class="tip">
         <span data-i18n="legendTip">提示:直接点击图例可切换显示判定类型</span><br>
         <a href="https://github.com/SleepingCui/TimingShow" target="_blank">TimingShow</a> | <a href="https://github.com/SleepingCui/adofai_offset_analyzer" target="_blank">Website source</a> | <a href="convert.html" target="_blank">Binary Converter</a>
     </div>
+</div>
+
+<div class="chart-config" id="chartConfig">
+    <div class="chart-config-panel" id="chartConfigPanel" hidden>
+        <div class="chart-config-title" data-i18n="configTitle">显示图表</div>
+        <div id="chartConfigList"></div>
+        <div class="chart-config-actions">
+            <button class="btn-sm" id="chartConfigShowAll" data-i18n="showAll">全部显示</button>
+            <button class="btn-sm" id="chartConfigReset" data-i18n="resetDefault">恢复默认</button>
+        </div>
+    </div>
+    <button class="chart-config-toggle" id="chartConfigToggle" type="button" aria-expanded="false" aria-controls="chartConfigPanel">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+            <path d="M2 4h12M2 8h12M2 12h12"></path>
+            <circle cx="6" cy="4" r="1.9" fill="currentColor" stroke="none"></circle>
+            <circle cx="11" cy="8" r="1.9" fill="currentColor" stroke="none"></circle>
+            <circle cx="7" cy="12" r="1.9" fill="currentColor" stroke="none"></circle>
+        </svg>
+        <span data-i18n="configTitle">显示图表</span>
+    </button>
 </div>
 
 <script src="i18n.js"></script>

@@ -82,6 +82,7 @@ function setLanguage(lang) {
     });
 
     updateMetaInfo();
+    renderChartConfigList();
 
     if (globalOffsets.length > 0) {
         updateAllCharts();
@@ -148,6 +149,26 @@ let myChart = null;
 let xaccChart = null;
 let distributionChart = null;
 let pieChart = null;
+let comboChart = null;
+let rollingChart = null;
+let returnChart = null;
+
+// Every chart on the page, in the order they appear, so the config menu, the
+// render pass and "clear" all work off one list. The detailed analysis charts
+// are opt-in: they answer narrower questions and would push the main charts
+// below the fold. Visibility is per session -- the page keeps no state between
+// loads.
+const CHART_SECTIONS = [
+    { key: 'scatter', sectionId: 'sectionScatter', titleKey: 'scatterTitle', defaultVisible: true, render: () => renderScatterChart() },
+    { key: 'rolling', sectionId: 'sectionRolling', titleKey: 'rollingTitle', defaultVisible: false, render: () => renderRollingChart() },
+    { key: 'returnMap', sectionId: 'sectionReturn', titleKey: 'returnTitle', defaultVisible: false, render: () => renderReturnChart() },
+    { key: 'distribution', sectionId: 'sectionDistribution', titleKey: 'distTitle', defaultVisible: true, render: () => renderDistributionChart() },
+    { key: 'pie', sectionId: 'sectionPie', titleKey: 'pieTitle', defaultVisible: true, render: () => renderPieChart() },
+    { key: 'xacc', sectionId: 'sectionXacc', titleKey: 'xaccTitle', defaultVisible: true, render: () => renderXaccChart() },
+    { key: 'combo', sectionId: 'sectionCombo', titleKey: 'comboTitle', defaultVisible: false, render: () => renderComboChart() }
+];
+CHART_SECTIONS.forEach(entry => { entry.visible = entry.defaultVisible; });
+const DEFAULT_CHART_ORDER = CHART_SECTIONS.map(entry => entry.key);
 
 function isGame34Log() {
     const version = currentMetaData && currentMetaData.hitMarginVersion;
@@ -181,6 +202,312 @@ function isPerfectFamilyCode(type) {
 
 function isNormalPerfectCode(type) {
     return type === 3 || type === 5;
+}
+
+// Codes that keep a Perfect streak alive. Auto counts because it is a perfect
+// hit by definition -- and because the max-combo counter already counts it, so
+// the streak strip and the "Max Combo" card report the same longest run.
+function isStreakHitCode(type) {
+    return isPerfectFamilyCode(type) || type === 12;
+}
+
+// Sequential ramp for the streak strip, dim -> bright, top step anchored on the
+// Perfect green already used elsewhere. Checked as an ordinal ramp against the
+// strip surface (#0a0a0a): lightness rises monotonically across the steps, so
+// the streak length stays readable for readers who cannot separate the hues.
+const COMBO_RAMP = ['#3a6b34', '#408738', '#45a43a', '#4cc23f', '#52e043', '#60ff4e'];
+const COMBO_BREAK_COLOR = '#333';
+
+// -> [{ startIndex, endIndex, length }], one entry per unbroken run of hits
+// that keep the streak alive.
+function computePerfectRuns(offsets) {
+    const runs = [];
+    let start = -1;
+
+    for (let i = 0; i < offsets.length; i++) {
+        if (isStreakHitCode(offsets[i][1])) {
+            if (start < 0) start = i;
+        } else if (start >= 0) {
+            runs.push({ startIndex: start, endIndex: i - 1, length: i - start });
+            start = -1;
+        }
+    }
+
+    if (start >= 0) {
+        runs.push({ startIndex: start, endIndex: offsets.length - 1, length: offsets.length - start });
+    }
+
+    return runs;
+}
+
+// Segments tile the whole play: every run, plus the gap that broke the streak
+// before it. `end` is exclusive, so a segment covers records [start, end).
+// Kept apart from the drawing code so the tiling can be checked on its own.
+function buildComboSegments(runs, totalHits) {
+    const segments = [];
+    let cursor = 0;
+
+    runs.forEach(run => {
+        if (run.startIndex > cursor) {
+            segments.push({ start: cursor, end: run.startIndex, length: run.startIndex - cursor, isRun: false });
+        }
+        segments.push({ start: run.startIndex, end: run.endIndex + 1, length: run.length, isRun: true });
+        cursor = run.endIndex + 1;
+    });
+
+    if (cursor < totalHits) {
+        segments.push({ start: cursor, end: totalHits, length: totalHits - cursor, isRun: false });
+    }
+
+    return segments;
+}
+
+function getChartSection(key) {
+    return CHART_SECTIONS.find(entry => entry.key === key);
+}
+
+function setChartVisible(key, visible) {
+    const entry = getChartSection(key);
+    if (!entry || entry.visible === visible) return;
+
+    entry.visible = visible;
+    const section = document.getElementById(entry.sectionId);
+    if (section) section.hidden = !visible || globalOffsets.length === 0;
+
+    // Chart.js sizes itself off its container, so a chart built while its
+    // section was hidden comes back as a 0x0 canvas. Always (re)render after
+    // the section is on screen again.
+    if (visible) entry.render();
+}
+
+// One place decides what is on screen. A chart section shows only when the user
+// asked for it *and* there is something to plot; everything that reports on a
+// run -- stat cards, judgment counts, the charts -- plus the controls that need
+// something to act on, only exist once there is data. Without it the page is
+// the title, the language selector and one centred prompt.
+function updatePageState() {
+    const hasData = globalOffsets.length > 0;
+
+    const emptyEl = document.getElementById('emptyState');
+    if (emptyEl) emptyEl.hidden = hasData;
+
+    // Lets the stylesheet drop the header divider when it holds nothing but the
+    // language selector.
+    document.body.classList.toggle('is-empty', !hasData);
+
+    // An empty run has nothing to reset, clear, describe or re-import from the
+    // header: the prompt in the middle carries the import button instead.
+    ['statsGrid', 'marginCountsBox', 'chartsContainer', 'resetZoom', 'clearData', 'metaInfo', 'fileInputWrapper']
+        .forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.hidden = !hasData;
+        });
+
+    CHART_SECTIONS.forEach(entry => {
+        const section = document.getElementById(entry.sectionId);
+        if (section) section.hidden = !hasData || !entry.visible;
+    });
+}
+
+// The registry is also the page order: re-appending the sections in registry
+// order moves them (appendChild moves an existing element, it does not copy).
+function applyChartOrder() {
+    const container = document.getElementById('chartsContainer');
+    if (!container) return;
+
+    CHART_SECTIONS.forEach(entry => {
+        const section = document.getElementById(entry.sectionId);
+        if (section) container.appendChild(section);
+    });
+}
+
+function moveChartSection(key, delta) {
+    const index = CHART_SECTIONS.findIndex(entry => entry.key === key);
+    const target = index + delta;
+    if (index < 0 || target < 0 || target >= CHART_SECTIONS.length) return;
+
+    const moved = CHART_SECTIONS.splice(index, 1)[0];
+    CHART_SECTIONS.splice(target, 0, moved);
+
+    applyChartOrder();
+    renderChartConfigList();
+}
+
+function resetChartOrder() {
+    CHART_SECTIONS.sort((a, b) => DEFAULT_CHART_ORDER.indexOf(a.key) - DEFAULT_CHART_ORDER.indexOf(b.key));
+    applyChartOrder();
+}
+
+function setChartConfigOpen(open) {
+    const panel = document.getElementById('chartConfigPanel');
+    const toggle = document.getElementById('chartConfigToggle');
+    if (!panel || !toggle) return;
+
+    panel.hidden = !open;
+    toggle.setAttribute('aria-expanded', String(open));
+}
+
+function renderChartConfigList() {
+    const listEl = document.getElementById('chartConfigList');
+    if (!listEl) return;
+
+    const chevron = up => '<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor"'
+        + ' stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+        + `<path d="${up ? 'M2 6.5 5 3.5l3 3' : 'M2 3.5 5 6.5l3-3'}"/></svg>`;
+
+    // A row is not one big <label>: a click on a nested button would toggle the
+    // checkbox as well.
+    listEl.innerHTML = CHART_SECTIONS.map((entry, index) => `
+        <div class="chart-config-item">
+            <label class="chart-config-check">
+                <input type="checkbox" data-chart-key="${entry.key}" ${entry.visible ? 'checked' : ''}>
+                <span>${t(entry.titleKey)}</span>
+            </label>
+            <button type="button" class="chart-config-arrow" data-move-key="${entry.key}" data-move-delta="-1"
+                ${index === 0 ? 'disabled' : ''} title="${t('moveUp')}" aria-label="${t('moveUp')}">${chevron(true)}</button>
+            <button type="button" class="chart-config-arrow" data-move-key="${entry.key}" data-move-delta="1"
+                ${index === CHART_SECTIONS.length - 1 ? 'disabled' : ''} title="${t('moveDown')}" aria-label="${t('moveDown')}">${chevron(false)}</button>
+        </div>
+    `).join('');
+
+    listEl.querySelectorAll('input[data-chart-key]').forEach(input => {
+        input.addEventListener('change', () => setChartVisible(input.dataset.chartKey, input.checked));
+    });
+
+    listEl.querySelectorAll('button[data-move-key]').forEach(button => {
+        button.addEventListener('click', () => moveChartSection(button.dataset.moveKey, Number(button.dataset.moveDelta)));
+    });
+}
+
+// Trailing-window statistics for the drift chart. Every entry is aligned with
+// globalOffsets; null means that record contributed no point (a non-numeric
+// offset, or nothing in the window yet). The window expands until it is full
+// and slides after that, so the line starts at the first usable hit.
+function computeRollingStats(offsets, windowSize) {
+    const size = windowSize > 0 ? windowSize : 1;
+    const meanData = [];
+    const upperData = [];
+    const lowerData = [];
+    const window = [];
+    let sum = 0;
+    let sumSquares = 0;
+
+    offsets.forEach(item => {
+        const value = item[0];
+        if (!isNaN(value)) {
+            window.push(value);
+            sum += value;
+            sumSquares += value * value;
+            if (window.length > size) {
+                const dropped = window.shift();
+                sum -= dropped;
+                sumSquares -= dropped * dropped;
+            }
+        }
+
+        if (window.length === 0) {
+            meanData.push(null);
+            upperData.push(null);
+            lowerData.push(null);
+            return;
+        }
+
+        const mean = sum / window.length;
+        // Population sigma, same convention as calculateStatistics(): the page
+        // reports one kind of sigma everywhere.
+        const sigma = Math.sqrt(Math.max(0, sumSquares / window.length - mean * mean));
+
+        meanData.push(mean);
+        upperData.push(mean + sigma);
+        lowerData.push(mean - sigma);
+    });
+
+    return { meanData, upperData, lowerData };
+}
+
+// First and last quarter of the run. Their difference is the headline answer to
+// "did I drift?", which a cumulative average cannot show: late in a long play
+// the cumulative mean barely moves any more.
+function computeDriftStats(offsets) {
+    const values = offsets.map(item => item[0]).filter(value => !isNaN(value));
+    if (values.length === 0) return { headMean: null, tailMean: null, drift: null };
+
+    const quarter = Math.max(1, Math.floor(values.length * 0.25));
+    const head = values.slice(0, quarter);
+    const tail = values.slice(-quarter);
+    const headMean = head.reduce((a, b) => a + b, 0) / head.length;
+    const tailMean = tail.reduce((a, b) => a + b, 0) / tail.length;
+
+    return { headMean: headMean, tailMean: tailMean, drift: tailMean - headMean };
+}
+
+// Judgments that are not the player's own tap timing: misses, overloads,
+// overpresses, autoplay and midspins. Pairing a tap with one of those measures
+// the gap between two unrelated presses, not a correction.
+const NON_TAP_CODES = [10, 11, 12, 13, 14, 15];
+
+function isTapRecord(item) {
+    return !isNaN(item[0]) && !NON_TAP_CODES.includes(item[1]);
+}
+
+// (previous tap, current tap) pairs. Only records that are neighbours in the
+// list count: with a miss in between the two taps are not neighbours in time
+// either, so the chain breaks there.
+function buildReturnPairs(offsets) {
+    const pairs = [];
+
+    for (let i = 1; i < offsets.length; i++) {
+        if (!isTapRecord(offsets[i - 1]) || !isTapRecord(offsets[i])) continue;
+        pairs.push({ previous: offsets[i - 1][0], current: offsets[i][0], hit: i + 1 });
+    }
+
+    return pairs;
+}
+
+// Pearson r between consecutive offsets. Negative means each hit tends to undo
+// the previous one (overcorrection), positive means offsets carry over.
+function computeCorrelation(pairs) {
+    const count = pairs.length;
+    if (count < 2) return null;
+
+    let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0, sumYY = 0;
+    pairs.forEach(pair => {
+        sumX += pair.previous;
+        sumY += pair.current;
+        sumXY += pair.previous * pair.current;
+        sumXX += pair.previous * pair.previous;
+        sumYY += pair.current * pair.current;
+    });
+
+    const meanX = sumX / count;
+    const meanY = sumY / count;
+    const sigmaX = Math.sqrt(Math.max(0, sumXX / count - meanX * meanX));
+    const sigmaY = Math.sqrt(Math.max(0, sumYY / count - meanY * meanY));
+    if (!(sigmaX > 0) || !(sigmaY > 0)) return null;
+
+    return (sumXY / count - meanX * meanY) / (sigmaX * sigmaY);
+}
+
+function getReturnVerdictKey(correlation) {
+    if (correlation === null) return null;
+    if (correlation < -0.3) return 'returnOvercorrect';
+    if (correlation > 0.3) return 'returnDrift';
+    return 'returnIndependent';
+}
+
+// Both axes of the return map share one symmetric limit so that the y = x
+// diagonal is really 45 degrees and the quadrants read straight. The limit is a
+// robust high quantile: one freak hit must not squash the cloud into the centre.
+function getSymmetricOffsetLimit(pairs) {
+    const magnitudes = [];
+    pairs.forEach(pair => {
+        magnitudes.push(Math.abs(pair.previous), Math.abs(pair.current));
+    });
+    if (magnitudes.length === 0) return 1;
+
+    magnitudes.sort((a, b) => a - b);
+    const index = Math.min(magnitudes.length - 1, Math.floor(magnitudes.length * 0.98));
+    return Math.max(magnitudes[index], 1);
 }
 
 function getXaccWeight(type) {
@@ -364,19 +691,19 @@ function renderDistributionChart() {
     
     const distStatsContainer = document.getElementById('distributionStats');
     distStatsContainer.innerHTML = `
-        <div class="dist-stat-item">
+        <div class="stat-tile">
             <div class="label">${t('mean')}</div>
             <div class="value" style="color: #ffffff;">${globalAvg.toFixed(2)}${unit}</div>
         </div>
-        <div class="dist-stat-item">
+        <div class="stat-tile">
             <div class="label">${t('stdDev')}</div>
             <div class="value" style="color: #ffffff;">${globalStdDev.toFixed(2)}${unit}</div>
         </div>
-        <div class="dist-stat-item">
+        <div class="stat-tile">
             <div class="label">${t('skewness')}</div>
             <div class="value" style="color: #ffffff;" id="skewnessValue">-</div>
         </div>
-        <div class="dist-stat-item">
+        <div class="stat-tile">
             <div class="label">${t('kurtosis')}</div>
             <div class="value" style="color: #ffffff;" id="kurtosisValue">-</div>
         </div>
@@ -815,16 +1142,7 @@ function calculateStaticStats() {
     ];
     
     const xacc = calcXACC(judgementsArray);
-    let maxCombo = 0;
-    let currentCombo = 0;
-    globalOffsets.forEach(item => {
-        if (isPerfectFamilyCode(item[1]) || item[1] === 12) {
-            currentCombo++;
-            if (currentCombo > maxCombo) maxCombo = currentCombo;
-        } else {
-            currentCombo = 0;
-        }
-    });
+    const maxCombo = computePerfectRuns(globalOffsets).reduce((max, run) => Math.max(max, run.length), 0);
 
     document.getElementById('statTotal').innerText = totalHits.toLocaleString();
     document.getElementById('statMaxCombo').innerText = maxCombo.toString();
@@ -1013,6 +1331,466 @@ function renderPieChart() {
     });
 }
 
+// Streak length -> ramp step. sqrt rather than linear: streak lengths are long
+// tailed, and a linear mapping would drop every ordinary run into the dimmest
+// step as soon as one long run exists.
+function getComboBin(length, maxLength) {
+    if (!(maxLength > 0)) return 0;
+    return Math.min(COMBO_RAMP.length - 1, Math.floor(COMBO_RAMP.length * Math.sqrt(length / maxLength)));
+}
+
+// The legend is derived from the same mapping instead of hard-coded ranges, so
+// it always names the lengths each step actually covers for this play.
+function buildComboLegend(maxLength) {
+    const entries = [];
+
+    for (let length = 1; length <= maxLength; length++) {
+        const bin = getComboBin(length, maxLength);
+        const last = entries[entries.length - 1];
+        if (last && last.bin === bin) last.end = length;
+        else entries.push({ bin: bin, start: length, end: length });
+    }
+
+    return entries;
+}
+
+function renderComboChart() {
+    if (globalOffsets.length === 0) return;
+
+    const filterContainer = document.getElementById('comboFilterContainer');
+    if (filterContainer) filterContainer.style.display = 'flex';
+
+    const useHitAxis = document.getElementById('comboUseHitCheckbox')?.checked === true;
+    const useTimeline = !useHitAxis && hasTimelineData();
+
+    // Records without a timestamp fall back to their hit number, which can move
+    // the x value backwards. Clamp instead of letting a segment end up with a
+    // negative span.
+    const xs = [];
+    let previousX = -Infinity;
+    for (let i = 0; i < globalOffsets.length; i++) {
+        let x = getChartX(globalOffsets[i], i, useHitAxis);
+        if (!(x > previousX)) x = previousX + (useHitAxis ? 1 : 0.001);
+        xs.push(x);
+        previousX = x;
+    }
+
+    // Right edge of a segment: the next hit's position. The last segment has no
+    // successor to borrow from, so extrapolate with the local spacing.
+    const endOf = (index) => {
+        if (index < xs.length) return xs[index];
+        const last = xs.length - 1;
+        const spacing = last > 0 ? xs[last] - xs[last - 1] : 1;
+        return xs[last] + (spacing > 0 ? spacing : 1);
+    };
+
+    const runs = computePerfectRuns(globalOffsets);
+    const maxRun = runs.reduce((max, run) => Math.max(max, run.length), 0);
+
+    const segments = buildComboSegments(runs, globalOffsets.length);
+
+    const statsEl = document.getElementById('comboStats');
+    if (statsEl) {
+        const average = runs.length > 0 ? runs.reduce((sum, run) => sum + run.length, 0) / runs.length : 0;
+        statsEl.innerHTML = `
+            <div class="stat-tile">
+                <div class="label">${t('comboStreakCount')}</div>
+                <div class="value">${runs.length}</div>
+            </div>
+            <div class="stat-tile">
+                <div class="label">${t('comboLongest')}</div>
+                <div class="value">${maxRun}</div>
+            </div>
+            <div class="stat-tile">
+                <div class="label">${t('comboAverage')}</div>
+                <div class="value">${average.toFixed(1)}</div>
+            </div>
+        `;
+    }
+
+    const legendEl = document.getElementById('comboLegend');
+    if (legendEl) {
+        const entries = buildComboLegend(maxRun).map(entry => `
+            <span class="legend-item">
+                <span class="swatch" style="background-color: ${COMBO_RAMP[entry.bin]};"></span>
+                ${entry.start === entry.end ? entry.start : `${entry.start}-${entry.end}`}
+            </span>
+        `);
+        legendEl.innerHTML = `
+            <span class="legend-title">${t('comboLength')}</span>
+            ${entries.join('')}
+            <span class="legend-item legend-break">
+                <span class="swatch" style="background-color: ${COMBO_BREAK_COLOR};"></span>
+                ${t('comboBreak')}
+            </span>
+        `;
+    }
+
+    if (comboChart) comboChart.destroy();
+
+    const ctx = document.getElementById('comboChart').getContext('2d');
+    const xMin = xs[0];
+    const xMax = endOf(xs.length);
+    // Only the right edge is padded: padding the left would put a tick at a
+    // negative timestamp, and the first block reads fine flush to the axis.
+    const padding = (xMax - xMin) * 0.01 || 1;
+
+    comboChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            // A single category: the strip is one row, and every datum has to
+            // name this same label or the category scale grows a row per datum.
+            labels: ['combo'],
+            datasets: [{
+                data: segments.map(segment => ({
+                    x: [xs[segment.start], endOf(segment.end)],
+                    y: 'combo',
+                    segment: segment
+                })),
+                // One colour per block. Chart.js only reads per-datum colours
+                // from an array here, not from properties on the data objects.
+                backgroundColor: segments.map(segment => segment.isRun
+                    ? COMBO_RAMP[getComboBin(segment.length, maxRun)]
+                    : COMBO_BREAK_COLOR),
+                // Surface-coloured 2px border: without the seam two adjacent
+                // runs of similar length read as one long band.
+                borderColor: '#0a0a0a',
+                borderWidth: 2,
+                barPercentage: 1.0,
+                categoryPercentage: 1.0
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            interaction: { mode: 'nearest', intersect: true },
+            layout: {
+                padding: { top: 6, right: 8, bottom: 0, left: 8 }
+            },
+            scales: {
+                x: {
+                    type: 'linear',
+                    min: xMin,
+                    max: xMax + padding,
+                    title: { display: true, text: useTimeline ? t('timeX') : t('keyX'), color: '#aaa' },
+                    grid: { color: '#252525' },
+                    ticks: { color: '#bbb', maxTicksLimit: 12 }
+                },
+                y: { display: false }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const segment = context.raw.segment;
+                            const lines = [
+                                `${segment.isRun ? t('comboRun') : t('comboBreak')}: ${segment.length}`,
+                                `${t('keyX')} ${segment.start + 1}-${segment.end}`
+                            ];
+
+                            const from = globalOffsets[segment.start][5];
+                            const to = globalOffsets[Math.min(segment.end, globalOffsets.length - 1)][5];
+                            if (Number.isFinite(from) && Number.isFinite(to)) {
+                                lines.push(`${t('timeX')}: ${from.toFixed(0)} ~ ${to.toFixed(0)}`);
+                            }
+
+                            return lines;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function isRollingHitAxis() {
+    return document.getElementById('rollingUseHitCheckbox')?.checked === true;
+}
+
+function getRollingWindowSize() {
+    const slider = document.getElementById('rollingWindowSlider');
+    const size = slider ? parseInt(slider.value, 10) : NaN;
+    return Number.isFinite(size) && size > 0 ? size : 50;
+}
+
+// Rolling series -> chart points. Split out from the renderer so the window
+// slider can refresh the series in place instead of rebuilding the chart.
+function buildRollingPoints(rolling, useHitAxis) {
+    const toPoints = values => values.reduce((points, value, index) => {
+        if (value !== null) points.push({ x: getChartX(globalOffsets[index], index, useHitAxis), y: value });
+        return points;
+    }, []);
+
+    return {
+        upper: toPoints(rolling.upperData),
+        mean: toPoints(rolling.meanData),
+        lower: toPoints(rolling.lowerData)
+    };
+}
+
+function renderRollingChart() {
+    if (globalOffsets.length === 0) return;
+
+    const filterContainer = document.getElementById('rollingFilterContainer');
+    if (filterContainer) filterContainer.style.display = 'flex';
+
+    const unit = getUnit();
+    const useHitAxis = isRollingHitAxis();
+    const useTimeline = !useHitAxis && hasTimelineData();
+    const points = buildRollingPoints(computeRollingStats(globalOffsets, getRollingWindowSize()), useHitAxis);
+
+    const drift = computeDriftStats(globalOffsets);
+    const statsEl = document.getElementById('rollingStats');
+    if (statsEl) {
+        const format = value => value === null ? '-' : `${value.toFixed(2)}${unit}`;
+        const signed = drift.drift === null ? '-' : `${drift.drift >= 0 ? '+' : ''}${drift.drift.toFixed(2)}${unit}`;
+        statsEl.innerHTML = `
+            <div class="stat-tile">
+                <div class="label">${t('rollingHeadMean')}</div>
+                <div class="value">${format(drift.headMean)}</div>
+            </div>
+            <div class="stat-tile">
+                <div class="label">${t('rollingTailMean')}</div>
+                <div class="value">${format(drift.tailMean)}</div>
+            </div>
+            <div class="stat-tile">
+                <div class="label">${t('rollingDrift')}</div>
+                <div class="value">${signed}</div>
+            </div>
+        `;
+    }
+
+    if (rollingChart) rollingChart.destroy();
+
+    const ctx = document.getElementById('rollingChart').getContext('2d');
+    rollingChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            datasets: [
+                {
+                    label: t('rollingBand'),
+                    data: points.upper,
+                    borderColor: 'rgba(79, 195, 247, 0.45)',
+                    borderWidth: 1,
+                    pointRadius: 0,
+                    // Filled down to the -1 sigma dataset, which is entry 2.
+                    fill: { target: 2 },
+                    backgroundColor: 'rgba(79, 195, 247, 0.14)'
+                },
+                {
+                    label: t('rollingMean'),
+                    data: points.mean,
+                    borderColor: '#ffb74d',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    fill: false
+                },
+                {
+                    // Exists to give the band a lower edge; the legend filter
+                    // below keeps its empty label out of the legend.
+                    label: '',
+                    data: points.lower,
+                    borderColor: 'rgba(79, 195, 247, 0.45)',
+                    borderWidth: 1,
+                    pointRadius: 0,
+                    fill: false
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+                x: {
+                    type: 'linear',
+                    title: { display: true, text: useTimeline ? t('timeX') : t('keyX'), color: '#aaa' },
+                    grid: { color: '#252525' },
+                    ticks: { color: '#bbb', maxTicksLimit: 12 }
+                },
+                y: {
+                    title: { display: true, text: t('offsetX') + ` (${unit.trim()})`, color: '#aaa' },
+                    grid: { color: '#252525' },
+                    ticks: { color: '#bbb' }
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: {
+                        color: '#fff', boxWidth: 12, font: { size: 14 }, padding: 15,
+                        filter: item => item.text !== ''
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        title: items => items.length > 0
+                            ? `${useTimeline ? t('timeX') : t('keyX')} ${items[0].parsed.x.toFixed(0)}`
+                            : '',
+                        label: context => context.dataset.label
+                            ? `${context.dataset.label}: ${context.parsed.y.toFixed(2)}${unit}`
+                            : null
+                    }
+                },
+                annotation: {
+                    annotations: {
+                        line0ms: {
+                            type: 'line',
+                            yMin: 0,
+                            yMax: 0,
+                            borderColor: 'rgba(255, 255, 255, 0.75)',
+                            borderWidth: 1.5,
+                            label: {
+                                display: true,
+                                content: `0${unit}`,
+                                position: 'start',
+                                backgroundColor: 'rgba(0,0,0,0.6)',
+                                color: '#fff',
+                                font: { size: 10 }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function renderReturnChart() {
+    if (globalOffsets.length === 0) return;
+
+    const unit = getUnit();
+    const pairs = buildReturnPairs(globalOffsets);
+    const correlation = computeCorrelation(pairs);
+    const verdictKey = getReturnVerdictKey(correlation);
+    const limit = getSymmetricOffsetLimit(pairs);
+
+    const statsEl = document.getElementById('returnStats');
+    if (statsEl) {
+        statsEl.innerHTML = `
+            <div class="stat-tile">
+                <div class="label">${t('returnPairs')}</div>
+                <div class="value">${pairs.length}</div>
+            </div>
+            <div class="stat-tile">
+                <div class="label">${t('returnCorr')}</div>
+                <div class="value">${correlation === null ? '-' : correlation.toFixed(3)}</div>
+            </div>
+            <div class="stat-tile">
+                <div class="label">${t('returnVerdict')}</div>
+                <div class="value">${verdictKey ? t(verdictKey) : '-'}</div>
+            </div>
+        `;
+    }
+
+    // Points the robust axis limit left outside, reported rather than silently
+    // clipped -- same behaviour as the distribution chart's axis badge.
+    const outside = pairs.reduce((count, pair) =>
+        (Math.abs(pair.previous) > limit || Math.abs(pair.current) > limit) ? count + 1 : count, 0);
+    const badgeEl = document.getElementById('returnAxisCropBadge');
+    if (badgeEl) {
+        if (outside > 0) {
+            badgeEl.innerText = (t('axisClipped') || '')
+                .replace('{min}', (-limit).toFixed(1))
+                .replace('{max}', limit.toFixed(1))
+                .replace('{unit}', unit)
+                .replace('{count}', outside);
+            badgeEl.style.display = 'block';
+        } else {
+            badgeEl.style.display = 'none';
+        }
+    }
+
+    if (returnChart) returnChart.destroy();
+
+    const ctx = document.getElementById('returnChart').getContext('2d');
+    returnChart = new Chart(ctx, {
+        type: 'scatter',
+        data: {
+            datasets: [{
+                label: t('returnTitle'),
+                // normalized is deliberately not set: x is the previous offset,
+                // which is not sorted.
+                data: pairs.map(pair => ({ x: pair.previous, y: pair.current, hit: pair.hit })),
+                backgroundColor: 'rgba(79, 195, 247, 0.55)',
+                pointRadius: 3,
+                pointHoverRadius: 6,
+                showLine: false
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            scales: {
+                x: {
+                    type: 'linear',
+                    min: -limit,
+                    max: limit,
+                    title: { display: true, text: `${t('returnX')} (${unit.trim()})`, color: '#aaa' },
+                    grid: { color: '#252525' },
+                    ticks: { color: '#bbb' }
+                },
+                y: {
+                    type: 'linear',
+                    min: -limit,
+                    max: limit,
+                    title: { display: true, text: t('offsetX') + ` (${unit.trim()})`, color: '#aaa' },
+                    grid: { color: '#252525' },
+                    ticks: { color: '#bbb' }
+                }
+            },
+            plugins: {
+                // One series: the section title names it, so no legend box.
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: context => {
+                            const pair = context.raw;
+                            return `${t('keyX')} ${pair.hit}: ${pair.x.toFixed(2)} → ${pair.y.toFixed(2)}${unit}`;
+                        }
+                    }
+                },
+                annotation: {
+                    annotations: {
+                        diagonal: {
+                            type: 'line',
+                            xMin: -limit, xMax: limit, yMin: -limit, yMax: limit,
+                            borderColor: 'rgba(255, 255, 255, 0.25)',
+                            borderWidth: 1,
+                            borderDash: [6, 6],
+                            label: {
+                                display: true,
+                                content: 'y = x',
+                                position: 'end',
+                                backgroundColor: 'rgba(0,0,0,0.6)',
+                                color: '#fff',
+                                font: { size: 10 }
+                            }
+                        },
+                        zeroX: {
+                            type: 'line',
+                            xMin: 0, xMax: 0, yMin: -limit, yMax: limit,
+                            borderColor: 'rgba(255, 255, 255, 0.25)',
+                            borderWidth: 1
+                        },
+                        zeroY: {
+                            type: 'line',
+                            yMin: 0, yMax: 0, xMin: -limit, xMax: limit,
+                            borderColor: 'rgba(255, 255, 255, 0.25)',
+                            borderWidth: 1
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
 document.getElementById('resetZoom').addEventListener('click', () => {
     if (myChart) {
         myChart.resetZoom();
@@ -1034,6 +1812,10 @@ function clearData() {
     if (filterContainer) filterContainer.style.display = 'none';
     const xaccFilterContainer = document.getElementById('xaccFilterContainer');
     if (xaccFilterContainer) xaccFilterContainer.style.display = 'none';
+    const comboFilterContainer = document.getElementById('comboFilterContainer');
+    if (comboFilterContainer) comboFilterContainer.style.display = 'none';
+    const rollingFilterContainer = document.getElementById('rollingFilterContainer');
+    if (rollingFilterContainer) rollingFilterContainer.style.display = 'none';
 
     const minInput = document.getElementById('minOffsetInput');
     const maxInput = document.getElementById('maxOffsetInput');
@@ -1047,6 +1829,10 @@ function clearData() {
     if (scatterUseHitCheckbox) scatterUseHitCheckbox.checked = false;
     const xaccUseHitCheckbox = document.getElementById('xaccUseHitCheckbox');
     if (xaccUseHitCheckbox) xaccUseHitCheckbox.checked = false;
+    const comboUseHitCheckbox = document.getElementById('comboUseHitCheckbox');
+    if (comboUseHitCheckbox) comboUseHitCheckbox.checked = false;
+    const rollingUseHitCheckbox = document.getElementById('rollingUseHitCheckbox');
+    if (rollingUseHitCheckbox) rollingUseHitCheckbox.checked = false;
 
     const badgeEl = document.getElementById('ignoredCountBadge');
     if (badgeEl) badgeEl.style.display = 'none';
@@ -1061,6 +1847,16 @@ function clearData() {
     document.getElementById('xaccValue').innerText = 'XACC: -';
     document.getElementById('pureNumbersContainer').innerHTML = '';
     document.getElementById('distributionStats').innerHTML = '';
+    const comboStatsEl = document.getElementById('comboStats');
+    if (comboStatsEl) comboStatsEl.innerHTML = '';
+    const comboLegendEl = document.getElementById('comboLegend');
+    if (comboLegendEl) comboLegendEl.innerHTML = '';
+    const rollingStatsEl = document.getElementById('rollingStats');
+    if (rollingStatsEl) rollingStatsEl.innerHTML = '';
+    const returnStatsEl = document.getElementById('returnStats');
+    if (returnStatsEl) returnStatsEl.innerHTML = '';
+    const returnAxisCropBadge = document.getElementById('returnAxisCropBadge');
+    if (returnAxisCropBadge) returnAxisCropBadge.style.display = 'none';
     document.getElementById('jsonFile').value = '';
     document.getElementById('statUR').innerText = '-';
     document.getElementById('statRatio').innerText = '-';
@@ -1071,15 +1867,24 @@ function clearData() {
     if (xaccChart) { xaccChart.destroy(); xaccChart = null; }
     if (distributionChart) { distributionChart.destroy(); distributionChart = null; }
     if (pieChart) { pieChart.destroy(); pieChart = null; }
+    if (comboChart) { comboChart.destroy(); comboChart = null; }
+    if (rollingChart) { rollingChart.destroy(); rollingChart = null; }
+    if (returnChart) { returnChart.destroy(); returnChart = null; }
+
+    // Back to the empty state: no data, no chart frames.
+    updatePageState();
 }
 
 document.getElementById('clearData').addEventListener('click', clearData);
 
 function updateAllCharts() {
-    renderScatterChart();
-    renderDistributionChart();
-    renderXaccChart();
-    renderPieChart();
+    // Sections are shown before anything renders: Chart.js sizes itself off its
+    // container, so rendering into a hidden one would leave a 0x0 canvas behind.
+    updatePageState();
+
+    CHART_SECTIONS.forEach(entry => {
+        if (entry.visible) entry.render();
+    });
 }
 
 function processOffsets(offsets) {
@@ -1476,6 +2281,69 @@ document.getElementById('xaccUseHitCheckbox')?.addEventListener('change', () => 
     renderXaccChart();
 });
 
+document.getElementById('comboUseHitCheckbox')?.addEventListener('change', () => {
+    renderComboChart();
+});
+
+document.getElementById('rollingUseHitCheckbox')?.addEventListener('change', () => {
+    renderRollingChart();
+});
+
+document.getElementById('rollingWindowSlider')?.addEventListener('input', (e) => {
+    const valueEl = document.getElementById('rollingWindowValue');
+    if (valueEl) valueEl.innerText = e.target.value;
+
+    if (!rollingChart) {
+        renderRollingChart();
+        return;
+    }
+
+    // Refresh the three series in place: rebuilding 10k-point datasets on every
+    // slider step would be too slow to drag.
+    const points = buildRollingPoints(
+        computeRollingStats(globalOffsets, getRollingWindowSize()),
+        isRollingHitAxis()
+    );
+    rollingChart.data.datasets[0].data = points.upper;
+    rollingChart.data.datasets[1].data = points.mean;
+    rollingChart.data.datasets[2].data = points.lower;
+    rollingChart.update('none');
+});
+
+document.getElementById('chartConfigToggle')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setChartConfigOpen(document.getElementById('chartConfigPanel')?.hidden === true);
+});
+
+document.getElementById('chartConfigShowAll')?.addEventListener('click', () => {
+    CHART_SECTIONS.forEach(entry => setChartVisible(entry.key, true));
+    renderChartConfigList();
+});
+
+document.getElementById('emptyImport')?.addEventListener('click', () => {
+    document.getElementById('jsonFile').click();
+});
+
+document.getElementById('chartConfigReset')?.addEventListener('click', () => {
+    CHART_SECTIONS.forEach(entry => setChartVisible(entry.key, entry.defaultVisible));
+    resetChartOrder();
+    renderChartConfigList();
+});
+
+// The menu closes on an outside click or Escape, the way a corner popover is
+// expected to behave. The check goes through composedPath, not contains(): the
+// reorder buttons rebuild the list they live in, so by the time the click
+// bubbles here the target is already detached and contains() would report an
+// outside click, folding the panel shut on every reorder.
+document.addEventListener('click', (e) => {
+    const config = document.getElementById('chartConfig');
+    if (config && !e.composedPath().includes(config)) setChartConfigOpen(false);
+});
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') setChartConfigOpen(false);
+});
+
 document.getElementById('btnResetRange')?.addEventListener('click', () => {
     const minInput = document.getElementById('minOffsetInput');
     const maxInput = document.getElementById('maxOffsetInput');
@@ -1550,6 +2418,7 @@ document.addEventListener('DOMContentLoaded', () => {
             updateMetaInfo();
         });
     }
-    setLanguage(currentLang); 
+    setLanguage(currentLang);
+    updatePageState();
     loadSourceFromUrl();
 });
