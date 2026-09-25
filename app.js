@@ -2521,7 +2521,14 @@ function processOffsetRecords(offsets, timeFirst) {
         const hasJudgeCode = item.length > judgeIndex && item[judgeIndex] != null;
         const judgeCode = hasJudgeCode ? Number(item[judgeIndex]) : normalizeLegacyJudgeCode(rawCode);
         const isXP = item.length > xpIndex && Boolean(item[xpIndex]);
-        return [value, judgeCode, rawCode, isXP, index, Number.isFinite(timeMs) && timeMs >= 0 ? timeMs : null];
+        // Formats from v6 on carry the XPerfect verdict in a column of their own
+        // instead of borrowing a judge code the way older logs did (that is what
+        // normalizeLegacyJudgeCode maps raw 12 to XPerfect for). Fold it back into
+        // the judge code so every chart keeps reading one semantic set: without
+        // this, Legacy logs -- which have no native XPerfect judge code -- keep
+        // reporting those hits as plain Perfect and the flag is silently ignored.
+        const semanticJudge = isXP && isPerfectFamilyCode(judgeCode) ? 4 : judgeCode;
+        return [value, semanticJudge, rawCode, isXP, index, Number.isFinite(timeMs) && timeMs >= 0 ? timeMs : null];
     });
 }
 
