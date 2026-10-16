@@ -25,11 +25,12 @@ function getUnit() {
 }
 
 function updateMetaInfo() {
-    const metaEl = document.getElementById('metaInfo');
     const summaryEl = document.getElementById('metaSummary');
     const detailsEl = document.getElementById('metaDetails');
     const toggleEl = document.getElementById('metaToggle');
-    if (!currentMetaData || globalOffsets.length === 0) {
+    // Keyed off the import, not off the selected player: a player who logged no
+    // hits must not hide the picker that switches back to one who did.
+    if (!currentMetaData || globalPlayers.length === 0) {
         if (summaryEl) summaryEl.innerText = t('waitingImport');
         if (detailsEl) {
             detailsEl.innerHTML = '';
@@ -43,15 +44,41 @@ function updateMetaInfo() {
         return;
     }
 
+    const truncatedSuffix = currentMetaData.truncated ? ` ${t('truncatedSuffix')}` : '';
+
     if (summaryEl) {
+        // The picker only exists for logs that actually hold several players,
+        // which keeps the single player case exactly as it was. Each option
+        // carries its own hit count: that is how a player tells which entry is
+        // theirs when the log names them by number alone.
+        const playerPicker = currentMetaData.playerCount > 1 ? `
+            <div class="player-select-row">
+                <select id="playerSelect" class="lang-select" aria-label="${t('playerLabel')}">
+                    ${globalPlayers.map((records, id) => `
+                        <option value="${id}"${id === activePlayer ? ' selected' : ''}>${t('playerLabel')} ${id + 1} (${records.length.toLocaleString()})</option>
+                    `).join('')}
+                </select>
+            </div>` : '';
+
         summaryEl.innerHTML = `
             <strong>${t('songName')}:</strong> ${currentMetaData.songName || 'Unknown'}<br>
             <strong>${t('levelPath')}:</strong> ${currentMetaData.levelPath || 'Unknown'}
+            ${playerPicker}
         `;
+
+        // Re-attached on every render: the summary above is rebuilt from
+        // scratch, so a listener added once would be discarded with it.
+        const playerSelect = document.getElementById('playerSelect');
+        if (playerSelect) {
+            playerSelect.addEventListener('change', e => setActivePlayer(e.target.value));
+        }
     }
     if (detailsEl) {
+        const playerNote = currentMetaData.playerCount > 1
+            ? ` (${t('playerLabel')} ${activePlayer + 1}/${currentMetaData.playerCount})`
+            : '';
         detailsEl.innerHTML = `
-            <div><strong>${t('formatVersion')}:</strong> ${currentMetaData.versionText || 'Unknown'}</div>
+            <div><strong>${t('formatVersion')}:</strong> ${currentMetaData.versionText || 'Unknown'}${truncatedSuffix}</div>
             <div><strong>${t('analysisTime')}:</strong> ${currentMetaData.timestamp ? new Date(currentMetaData.timestamp * 1000).toLocaleString() : 'Unknown'}</div>
             <div><strong>${t('judgeVersion')}:</strong> ${currentMetaData.judgeCodeVersion ? `v${currentMetaData.judgeCodeVersion}` : t('legacyMode')}</div>
             <div><strong>${t('hitMarginVersion')}:</strong> ${currentMetaData.hitMarginVersion ?? 'Unknown'}</div>
@@ -59,7 +86,9 @@ function updateMetaInfo() {
             <div><strong>${t('speed')}:</strong> ${currentMetaData.speed ?? 'Unknown'}</div>
             <div><strong>${t('pitch')}:</strong> ${currentMetaData.pitch ?? 'Unknown'}</div>
             <div><strong>${t('valueMode')}:</strong> ${currentMetaData.isAngle ? 'Angle' : 'Timing'}</div>
-            <div><strong>${t('recordCount')}:</strong> ${globalOffsets.length.toLocaleString()}</div>
+            <div><strong>${t('playerCount')}:</strong> ${currentMetaData.playerCount}</div>
+            <div><strong>${t('recordCount')}:</strong> ${globalOffsets.length.toLocaleString()}${playerNote}</div>
+            ${currentMetaData.truncated ? `<div class="meta-warning">${t('truncatedWarning')}</div>` : ''}
         `;
         detailsEl.hidden = !metaExpanded;
     }
@@ -141,7 +170,15 @@ const JD_WEIGHTS = {
     "lPerfect": 0.75,
     "late": 0.4
 };
+// The records of the player currently being analysed. Every chart, the stat
+// cards and the selection read this one array, so a log with several players is
+// handled by pointing it at another already-built array -- see setActivePlayer().
 let globalOffsets = [];
+// One record array per player, index = the player id the log used. A log holds
+// one entry here even in the single player case, so nothing downstream needs a
+// separate "is this a co-op log" path.
+let globalPlayers = [];
+let activePlayer = 0;
 let globalAvg = 0;
 let globalStdDev = 0;
 let globalCounts = {};
@@ -328,17 +365,28 @@ function setChartVisible(key, visible) {
 // the title, the language selector and one centred prompt.
 function updatePageState() {
     const hasData = globalOffsets.length > 0;
+    // Two questions, not one: whether a log is loaded at all, and whether the
+    // selected player put any hits in it. A player who never hit anything
+    // leaves the header -- and with it the player picker -- in place, so the
+    // way back to the other players does not vanish with the data.
+    const hasLog = globalPlayers.length > 0;
 
     const emptyEl = document.getElementById('emptyState');
-    if (emptyEl) emptyEl.hidden = hasData;
+    if (emptyEl) emptyEl.hidden = hasLog;
 
     // Lets the stylesheet drop the header divider when it holds nothing but the
     // language selector.
-    document.body.classList.toggle('is-empty', !hasData);
+    document.body.classList.toggle('is-empty', !hasLog);
 
     // An empty run has nothing to reset, clear, describe or re-import from the
     // header: the prompt in the middle carries the import button instead.
-    ['statsGrid', 'marginCountsBox', 'chartsContainer', 'resetZoom', 'clearData', 'metaInfo', 'fileInputWrapper']
+    ['metaInfo', 'fileInputWrapper']
+        .forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.hidden = !hasLog;
+        });
+
+    ['statsGrid', 'marginCountsBox', 'chartsContainer', 'resetZoom', 'clearData']
         .forEach(id => {
             const el = document.getElementById(id);
             if (el) el.hidden = !hasData;
@@ -2402,6 +2450,8 @@ document.getElementById('resetZoom').addEventListener('click', () => {
 
 function clearData() {
     globalOffsets = [];
+    globalPlayers = [];
+    activePlayer = 0;
     globalAvg = 0;
     globalStdDev = 0;
     globalCounts = {};
@@ -2505,10 +2555,9 @@ function updateAllCharts() {
     });
 }
 
-function processOffsets(offsets) {
-    return processOffsetRecords(offsets, false);
-}
-
+// Raw parse tuples to records, `timeFirst` telling which column is which: logs
+// from binary v5 and JSON v6 on lead with the song time, everything older --
+// and CRPL2 -- carries the offset alone.
 function processOffsetRecords(offsets, timeFirst) {
     return offsets.map((item, index) => {
         const timeMs = timeFirst && item[0] != null ? Number(item[0]) : null;
@@ -2701,6 +2750,53 @@ function getChartX(item, index, useHitAxis) {
     return useHitAxis ? getRecordHitNumber(item, index) : getRecordX(item, index);
 }
 
+// ---------------------------------------------------------------------------
+// Log parsing
+//
+// Two on-disk shapes (TimingShow JSON and the TSMZ binary), one result:
+//
+//   {
+//     header:      { songName, levelPath, timestamp, bpm, speed, pitch, isAngle,
+//                    formatVersion, versionText, hitMarginVersion, judgeCodeVersion },
+//     players:     [ { tuples, timeFirst }, ... ]   // index = playerId
+//     playerCount: int,
+//     truncated:   bool
+//   }
+//
+// `players` is a list rather than a single stream because a multi-player log
+// holds several independent runs of hits: hit numbering, "the previous hit" and
+// every lag statistic only mean something inside one player's stream, so the
+// players are kept apart all the way to the UI (see setActivePlayer).
+//
+// Both formats are appended to while the game plays, so a crash -- or reading
+// the file while the game still holds it open -- leaves a half-written tail.
+// Neither loader fails on that: each stops at the last complete record and
+// reports `truncated`, because analysing everything up to the crash beats
+// analysing nothing.
+// ---------------------------------------------------------------------------
+
+// Thrown by the readers below when a record runs past the end of the buffer. It
+// travels as a value, not an Error: it means "the file ended here", not "the
+// file is broken", and only the loader that owns the read loop catches it.
+const TRUNCATED = Symbol('log-truncated');
+
+const HIT_MARGIN_VERSIONS = { 1: 'Legacy', 2: 'Game34' };
+
+// The binary header stores the hit margin table as a byte where JSON stores its
+// name; both end up as the name, which is what isGame34Log() reads.
+function hitMarginVersionText(value) {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'string') return value || null;
+    return HIT_MARGIN_VERSIONS[value] ?? 'Unknown';
+}
+
+function bitsToDouble(bits) {
+    const buffer = new ArrayBuffer(8);
+    const view = new DataView(buffer);
+    view.setBigInt64(0, bits, true);
+    return view.getFloat64(0, true);
+}
+
 function readString(view, offset) {
     let length = 0;
     let shift = 0;
@@ -2709,82 +2805,89 @@ function readString(view, offset) {
         length |= (b & 0x7F) << shift;
         shift += 7;
     } while (view[offset - 1] & 0x80);
-    
+
     const str = new TextDecoder().decode(
         new Uint8Array(view.buffer, view.byteOffset + offset, length)
     );
     return { str, newOffset: offset + length };
 }
 
+// 1.8.2-: fixed-size records of a raw double and an int32 margin code, and no
+// song time at all -- the first column is the offset itself, as in every format
+// up to v4.
 function parseV1(view, offset) {
     const dv = new DataView(view.buffer, view.byteOffset);
-    const offsets = [];
+    const tuples = [];
     while (offset + 12 <= view.byteLength) {
         const timing = dv.getFloat64(offset, true);
         const marginCode = dv.getInt32(offset + 8, true);
-        offsets.push([Math.round(timing * 10000) / 10000, marginCode]);
+        tuples.push([Math.round(timing * 10000) / 10000, marginCode]);
         offset += 12;
     }
-    return offsets;
+    // v1 records are fixed width, so anything left over is a half-written one.
+    return { tuples, truncated: offset !== view.byteLength };
 }
 
+// 1.9.0+: the offset as a running XOR against the previous record's bits, then
+// a ZigZag varint margin code.
 function parseV2(view, offset) {
     const dv = new DataView(view.buffer, view.byteOffset);
-    const offsets = [];
+    const tuples = [];
     let prevTimingBits = 0n;
-    while (offset < view.byteLength) {
-        try {
-            if (offset + 8 > view.byteLength) break;
+
+    const readZigZagVarInt = () => {
+        let result = 0;
+        let shift = 0;
+        let bytesRead = 0;
+        let byte;
+        do {
+            if (offset >= view.byteLength) throw TRUNCATED;
+            byte = view[offset++];
+            result += (byte & 0x7F) * Math.pow(2, shift);
+            shift += 7;
+            bytesRead++;
+            if (bytesRead > 5) throw new Error('VarInt exceeds maximum 5 bytes');
+        } while (byte & 0x80);
+        return (result >>> 1) ^ -(result & 1);
+    };
+
+    try {
+        while (offset < view.byteLength) {
+            if (offset + 8 > view.byteLength) throw TRUNCATED;
             const xorBits = dv.getBigInt64(offset, true);
             offset += 8;
 
             const actualBits = xorBits ^ prevTimingBits;
             prevTimingBits = actualBits;
-            
-            const buffer = new ArrayBuffer(8);
-            const view64 = new DataView(buffer);
-            view64.setBigInt64(0, actualBits, true);
-            const timing = view64.getFloat64(0, true);
-            
-            const readVarInt = (zigZag) => {
-                let result = 0;
-                let shift = 0;
-                let bytesRead = 0;
-                let byte;
-                do {
-                    if (offset >= view.byteLength) throw new Error('Unexpected EOF while reading VarInt');
-                    byte = view[offset++];
-                    result += (byte & 0x7F) * Math.pow(2, shift);
-                    shift += 7;
-                    bytesRead++;
-                    if (bytesRead > 5) throw new Error('VarInt exceeds maximum 5 bytes');
-                } while (byte & 0x80);
-                return zigZag ? ((result >>> 1) ^ -(result & 1)) : result;
-            };
-
-            const marginCode = readVarInt(true);
-            offsets.push([Math.round(timing * 10000) / 10000, marginCode]);
-        } catch (e) {
-            console.warn('Error parsing at offset', offset, ':', e.message);
-            break;
+            const timing = bitsToDouble(actualBits);
+            const marginCode = readZigZagVarInt();
+            tuples.push([Math.round(timing * 10000) / 10000, marginCode]);
         }
+    } catch (err) {
+        if (err !== TRUNCATED) throw err;
+        return { tuples, truncated: true };
     }
-    return offsets;
+    return { tuples, truncated: false };
 }
 
-function parseV5(view, offset) {
-    return parseV5Records(view, offset, false);
-}
-
-function parseV7(view, offset) {
-    return parseV5Records(view, offset, true);
-}
-
-function parseV5Records(view, offset, compactXor) {
+// Records of a v5+ TSMZ stream, grouped by the player they belong to.
+//
+// The two XOR chains are kept across the whole loop, including across players:
+// they are the writer's history of the previous record's bit pattern, and a v8
+// stream does not restart them per player. `hasPlayerId` is the v8 byte that
+// leads each record; without it (v5..v7) every record is player 0's.
+function parseBinaryRecords(view, offset, options) {
+    const compactXor = options.compactXor;
+    const hasPlayerId = options.hasPlayerId;
     const dv = new DataView(view.buffer, view.byteOffset);
-    const offsets = [];
+    const streams = [];
     let prevTimeBits = 0n;
     let prevValueBits = 0n;
+
+    const readByte = () => {
+        if (offset >= view.byteLength) throw TRUNCATED;
+        return view[offset++];
+    };
 
     const readZigZagVarInt = () => {
         let result = 0;
@@ -2792,8 +2895,7 @@ function parseV5Records(view, offset, compactXor) {
         let byte;
         let count = 0;
         do {
-            if (offset >= view.byteLength) throw new Error('Unexpected EOF while reading v5 VarInt');
-            byte = view[offset++];
+            byte = readByte();
             result += (byte & 0x7F) * Math.pow(2, shift);
             shift += 7;
             count++;
@@ -2804,14 +2906,13 @@ function parseV5Records(view, offset, compactXor) {
 
     const readXorBits = (previousBits) => {
         if (!compactXor) {
-            if (offset + 8 > view.byteLength) throw new Error('Truncated v5 double');
+            if (offset + 8 > view.byteLength) throw TRUNCATED;
             const xorBits = dv.getBigInt64(offset, true);
             offset += 8;
             return xorBits ^ previousBits;
         }
 
-        if (offset >= view.byteLength) throw new Error('Unexpected EOF while reading v7 double control');
-        const control = view[offset++];
+        const control = readByte();
         if (control === 0) return previousBits;
         if ((control & 0x80) === 0) throw new Error('Invalid v7 double control byte');
 
@@ -2822,50 +2923,58 @@ function parseV5Records(view, offset, compactXor) {
 
         const trailingBytes = 8 - leadingBytes - significantBytes;
         let xorBits = 0n;
-        if (offset + significantBytes > view.byteLength)
-            throw new Error('Truncated v7 double payload');
         for (let i = 0; i < significantBytes; i++) {
-            xorBits |= BigInt(view[offset++]) << BigInt(8 * (trailingBytes + i));
+            xorBits |= BigInt(readByte()) << BigInt(8 * (trailingBytes + i));
         }
         return xorBits ^ previousBits;
     };
 
-    while (offset < view.byteLength) {
-        const timeBits = readXorBits(prevTimeBits);
-        prevTimeBits = timeBits;
+    // Streams are created on demand, so a player id above the header's count
+    // still lands somewhere instead of being dropped.
+    const streamFor = (playerId) => {
+        while (streams.length <= playerId) streams.push([]);
+        return streams[playerId];
+    };
 
-        const valueBits = readXorBits(prevValueBits);
-        prevValueBits = valueBits;
+    try {
+        while (offset < view.byteLength) {
+            const playerId = hasPlayerId ? readByte() : 0;
+            const timeBits = readXorBits(prevTimeBits);
+            prevTimeBits = timeBits;
+            const valueBits = readXorBits(prevValueBits);
+            prevValueBits = valueBits;
 
-        const timeBuffer = new ArrayBuffer(8);
-        const timeView = new DataView(timeBuffer);
-        timeView.setBigInt64(0, timeBits, true);
-        const timeMs = timeView.getFloat64(0, true);
-
-        const valueBuffer = new ArrayBuffer(8);
-        const valueView = new DataView(valueBuffer);
-        valueView.setBigInt64(0, valueBits, true);
-        const value = valueView.getFloat64(0, true);
-        const rawMarginCode = readZigZagVarInt();
-        const judgeCode = readZigZagVarInt();
-        if (offset >= view.byteLength) throw new Error(`Truncated v${compactXor ? 7 : 5} XPerfect flag`);
-        const isXP = view[offset++] !== 0;
-        offsets.push([Math.round(timeMs * 1000) / 1000, Math.round(value * 10000) / 10000, rawMarginCode, judgeCode, isXP]);
+            const timeMs = bitsToDouble(timeBits);
+            const value = bitsToDouble(valueBits);
+            const rawMarginCode = readZigZagVarInt();
+            const judgeCode = readZigZagVarInt();
+            const isXP = readByte() !== 0;
+            streamFor(playerId).push([
+                Math.round(timeMs * 1000) / 1000,
+                Math.round(value * 10000) / 10000,
+                rawMarginCode,
+                judgeCode,
+                isXP
+            ]);
+        }
+    } catch (err) {
+        if (err !== TRUNCATED) throw err;
+        return { streams, truncated: true };
     }
-    return offsets;
+    return { streams, truncated: false };
 }
 
 function parseTlogData(decompressed) {
     const view = new Uint8Array(decompressed);
     const dv = new DataView(decompressed.buffer, decompressed.byteOffset);
     let offset = 0;
-    
+
     const magic = new TextDecoder().decode(view.slice(offset, offset + 4));
     if (magic !== 'TSMZ') {
         throw new Error('Invalid file format magic: ' + magic);
     }
     offset += 4;
-    
+
     const version = view[offset++];
     const timestamp = dv.getBigInt64(offset, true);
     offset += 8;
@@ -2883,31 +2992,286 @@ function parseTlogData(decompressed) {
         isAngle = view[offset++] === 1;
     }
 
-    let offsets;
+    let players = [];
+    let playerCount = 1;
     let hitMarginVersion = null;
     let judgeCodeVersion = null;
+    let truncated = false;
+
     if (version >= 5) {
         if (offset + 2 > view.byteLength) throw new Error('Missing v5 format metadata');
         hitMarginVersion = view[offset++];
         judgeCodeVersion = view[offset++];
-        offsets = version >= 7 ? parseV7(view, offset) : parseV5(view, offset);
-    } else if (version === 1) offsets = parseV1(view, offset);
-    else if (version >= 2) offsets = parseV2(view, offset);
-    else throw new Error(`Unsupported tlog version: ${version}`);
+
+        // v8 heads the file with the player total and leads every record with
+        // the player it belongs to; v5..v7 hold a single player and say so with
+        // neither. A header count of 0 is the writer's "unknown", read as one.
+        let declaredPlayers = 1;
+        if (version >= 8) {
+            const declared = view[offset++];
+            declaredPlayers = declared > 0 ? declared : 1;
+        }
+
+        const records = parseBinaryRecords(view, offset, {
+            compactXor: version >= 7,
+            hasPlayerId: version >= 8
+        });
+        truncated = records.truncated;
+
+        // The header count wins over the ids actually seen, so a player who
+        // never hit anything still gets a (empty) slot under their own number.
+        playerCount = Math.max(declaredPlayers, records.streams.length, 1);
+        players = [];
+        for (let id = 0; id < playerCount; id++) {
+            players.push({ tuples: records.streams[id] || [], timeFirst: true });
+        }
+    } else if (version === 1) {
+        const records = parseV1(view, offset);
+        truncated = records.truncated;
+        players = [{ tuples: records.tuples, timeFirst: false }];
+    } else if (version >= 2) {
+        const records = parseV2(view, offset);
+        truncated = records.truncated;
+        players = [{ tuples: records.tuples, timeFirst: false }];
+    } else {
+        throw new Error(`Unsupported tlog version: ${version}`);
+    }
 
     return {
-        songName: songName || '',
-        levelPath: levelPath || '',
-        timestamp: Number(timestamp),
-        bpm,
-        speed,
-        pitch,
-        versionText: version >= 5 ? `TimingShow binary v${version}` : (version === 1 ? '1.8.2- (v1)' : `1.9.0+ (v${version})`),
-        isAngle: isAngle,
-        hitMarginVersion,
-        judgeCodeVersion,
-        offsets: processOffsetRecords(offsets, true)
+        header: {
+            songName: songName || '',
+            levelPath: levelPath || '',
+            timestamp: Number(timestamp),
+            bpm,
+            speed,
+            pitch,
+            versionText: version >= 5 ? `TimingShow binary v${version}` : (version === 1 ? '1.8.2- (v1)' : `1.9.0+ (v${version})`),
+            isAngle: isAngle,
+            hitMarginVersion: hitMarginVersionText(hitMarginVersion),
+            judgeCodeVersion
+        },
+        players,
+        playerCount,
+        truncated
     };
+}
+
+// ---------------------------------------------------------------------------
+// JSON logs
+// ---------------------------------------------------------------------------
+
+const OFFSETS_KEY_PREFIX = 'offsets_';
+
+// The fields every TimingShow JSON log opens with, in the order it writes them.
+// Seeing any of them is what tells a TimingShow log apart from some other
+// JSON file that merely happens to parse.
+const HEADER_FIELDS = [
+    'songName', 'levelPath', 'timestamp', 'bpm', 'speed', 'pitch', 'isAngle',
+    'formatVersion', 'hitMarginVersion', 'judgeCodeVersion'
+];
+
+// v7 files one array per player under `offsets_<N>`; the bare `offsets` of the
+// older single-player logs is player 0. Both spellings can appear in one file.
+function isOffsetsKey(key) {
+    if (key === 'offsets') return true;
+    if (!key.startsWith(OFFSETS_KEY_PREFIX)) return false;
+    return /^\d+$/.test(key.slice(OFFSETS_KEY_PREFIX.length));
+}
+
+function offsetsKeyPlayerId(key) {
+    if (key === 'offsets') return 0;
+    const playerNumber = parseInt(key.slice(OFFSETS_KEY_PREFIX.length), 10);
+    return playerNumber >= 1 ? playerNumber - 1 : 0;
+}
+
+// The oldest logs key the offsets by hit number, holding { v: value, j: margin }
+// per hit instead of an array of tuples.
+function isLegacyOffsetsObject(value) {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function legacyOffsetsTuples(offsets) {
+    return Object.keys(offsets)
+        .sort((a, b) => parseInt(a, 10) - parseInt(b, 10))
+        .map(key => [offsets[key].v, offsets[key].j]);
+}
+
+// Trims a half-written JSON log back to its last complete value and closes the
+// containers left open, so the records the writer had already flushed can still
+// be read. Returns null when there is no complete value to cut back to.
+//
+// The walk below tracks what the next significant character has to be, because
+// only a position where a *value* ended is a safe cut: cutting after a key, or
+// mid-number, would produce something that is not JSON at all.
+function repairTruncatedJson(text) {
+    const open = [];         // closers for the containers still open, innermost last
+    let expect = 'value';    // 'value' | 'key' | 'colon' | 'comma'
+    let lastEnd = -1;        // index just past the last complete value
+    let lastOpen = null;     // `open` as it was at lastEnd
+    let inString = false;
+    let escaped = false;
+
+    const markComplete = (end) => {
+        lastEnd = end;
+        lastOpen = open.slice();
+    };
+
+    for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+
+        if (inString) {
+            if (escaped) escaped = false;
+            else if (ch === '\\') escaped = true;
+            else if (ch === '"') {
+                inString = false;
+                if (expect === 'key') expect = 'colon';
+                else { expect = 'comma'; markComplete(i + 1); }
+            }
+            continue;
+        }
+
+        if (ch === '"') { inString = true; continue; }
+
+        if (ch === '{' || ch === '[') {
+            open.push(ch === '{' ? '}' : ']');
+            expect = ch === '{' ? 'key' : 'value';
+            continue;
+        }
+
+        if (ch === '}' || ch === ']') {
+            open.pop();
+            expect = 'comma';
+            markComplete(i + 1);
+            continue;
+        }
+
+        if (ch === ':') { expect = 'value'; continue; }
+        if (ch === ',') { expect = open[open.length - 1] === '}' ? 'key' : 'value'; continue; }
+        if (ch === ' ' || ch === '\t' || ch === '\r' || ch === '\n') continue;
+
+        // Anything else starts a scalar (number, true, false, null). Its end is
+        // only known from the delimiter that follows it.
+        if (expect !== 'value') break;
+
+        let end = i;
+        while (end < text.length && !',:]}" \t\r\n'.includes(text[end])) end++;
+        if (end === text.length) break;   // ran off the end mid-scalar
+        expect = 'comma';
+        markComplete(end);
+        i = end - 1;
+    }
+
+    if (lastEnd < 0) return null;
+    return text.slice(0, lastEnd) + lastOpen.reverse().join('');
+}
+
+// Reads a TimingShow JSON log: v7 (`offsets_1..N`, one array per player) and the
+// older single-player layouts alike. Returns null when the file holds no
+// offsets at all, which is what "not one of ours" looks like.
+function readJsonLog(text) {
+    const source = text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
+    let parsed;
+    let truncated = false;
+
+    try {
+        parsed = JSON.parse(source);
+    } catch (err) {
+        // A log read while the game is still writing it ends mid-value. The
+        // repair keeps the records that did make it to disk; if there are none
+        // to keep, the original error is the honest answer.
+        const repaired = repairTruncatedJson(source);
+        if (repaired === null) throw err;
+        parsed = JSON.parse(repaired);
+        truncated = true;
+    }
+
+    const players = [];
+    let sawNumberedKey = false;
+    Object.keys(parsed).forEach(key => {
+        if (!isOffsetsKey(key)) return;
+        const value = parsed[key];
+        const playerId = offsetsKeyPlayerId(key);
+        if (key !== 'offsets') sawNumberedKey = true;
+
+        if (Array.isArray(value)) {
+            // v7 entries are [timeMs, value, raw, judge, isXPerfect]; v5 logs
+            // kept the same tuple, and from v6 on it leads with the song time.
+            const timeFirst = key !== 'offsets' || Number(parsed.formatVersion) >= 6;
+            players[playerId] = { tuples: value, timeFirst };
+        } else if (isLegacyOffsetsObject(value)) {
+            players[playerId] = { tuples: legacyOffsetsTuples(value), timeFirst: false };
+        }
+    });
+
+    // A JSON log is written in two halves -- the header at session start, the
+    // player arrays when it closes -- so a session that crashed before closing
+    // is a header with no offsets at all. That is a truncated log, not a
+    // foreign file: only a file with neither is one we cannot read.
+    if (players.length === 0 && !HEADER_FIELDS.some(field => field in parsed)) return null;
+
+    const formatVersion = Number.isFinite(Number(parsed.formatVersion)) ? Number(parsed.formatVersion) : null;
+    let versionText = 'Legacy JSON array';
+
+    if (sawNumberedKey || (formatVersion !== null && formatVersion >= 5)) {
+        versionText = formatVersion === null ? 'TimingShow JSON' : `TimingShow JSON v${formatVersion}`;
+    } else if (isLegacyOffsetsObject(parsed.offsets)) {
+        versionText = 'Legacy JSON object';
+    }
+
+    return {
+        header: {
+            songName: parsed.songName,
+            levelPath: parsed.levelPath,
+            timestamp: parsed.timestamp,
+            bpm: parsed.bpm ?? null,
+            speed: parsed.speed ?? null,
+            pitch: parsed.pitch ?? null,
+            isAngle: parsed.isAngle === true,
+            versionText,
+            hitMarginVersion: hitMarginVersionText(parsed.hitMarginVersion),
+            judgeCodeVersion: parsed.judgeCodeVersion || null
+        },
+        players,
+        playerCount: players.length,
+        truncated
+    };
+}
+
+// Unwraps a gzipped binary log, and says whether the stream it came from was
+// finished.
+//
+// A log read while the game is still writing it ends in a half-flushed deflate
+// block, and pako's one-shot ungzip answers that with `undefined` rather than an
+// error -- it throws only for bytes that are genuinely wrong, and it verifies
+// the gzip trailer (CRC and length) itself, so nothing here needs to. The
+// streaming inflator keeps what it did decode, so the run so far stays readable
+// and the caller marks it truncated.
+function gunzipLog(bytes) {
+    const oneShot = pako.ungzip(bytes);
+    if (oneShot) return { bytes: oneShot, truncated: false };
+
+    const inflator = new pako.Inflate();
+    inflator.push(bytes, true);
+
+    // pako only hands an output buffer over as a chunk once it is full. The
+    // rest -- everything written since the last full buffer -- is handed over
+    // when the stream *ends*, which is the part that never arrived; it is still
+    // sitting in the inflator's own output buffer.
+    const pieces = (inflator.chunks || []).slice();
+    const buffer = inflator.strm;
+    if (buffer && buffer.next_out > 0) pieces.push(buffer.output.subarray(0, buffer.next_out));
+
+    const total = pieces.reduce((sum, piece) => sum + piece.length, 0);
+    if (total === 0) {
+        // The deflate block boundary landed inside the missing tail, so there
+        // is nothing to read. Better a plain failure than half a record.
+        throw new Error(inflator.err ? String(inflator.err) : 'gzip stream is incomplete');
+    }
+
+    const inflated = new Uint8Array(total);
+    let at = 0;
+    pieces.forEach(piece => { inflated.set(piece, at); at += piece.length; });
+    return { bytes: inflated, truncated: true };
 }
 
 async function LoadFile(file) {
@@ -2918,42 +3282,11 @@ async function LoadFile(file) {
         let data = null;
 
         if (fileName.endsWith('.json')) {
-            const text = await file.text();
-            const parsed = JSON.parse(text);
-            
-            if (!parsed.offsets) {
-                alert(t('invalidJson'));
-                return;
-            }
-
-            let parsedOffsets = [];
-            let versionText = "Unknown";
-
-            if (Array.isArray(parsed.offsets)) {
-                parsedOffsets = parsed.offsets;
-                versionText = parsed.formatVersion >= 5 ? `TimingShow JSON v${parsed.formatVersion}` : "Legacy JSON array";
-            } else if (typeof parsed.offsets === 'object' && parsed.offsets !== null) {
-                const sortedKeys = Object.keys(parsed.offsets).sort((a, b) => parseInt(a) - parseInt(b));
-                parsedOffsets = sortedKeys.map(key => [parsed.offsets[key].v, parsed.offsets[key].j]);
-                versionText = "Legacy JSON object";
-            } else {
+            data = readJsonLog(await file.text());
+            if (!data) {
                 alert(t('unknownFormat'));
                 return;
             }
-
-            data = {
-                offsets: processOffsetRecords(parsedOffsets, parsed.formatVersion >= 6),
-                versionText: versionText,
-                songName: parsed.songName,
-                levelPath: parsed.levelPath,
-                timestamp: parsed.timestamp,
-                bpm: parsed.bpm ?? null,
-                speed: parsed.speed ?? null,
-                pitch: parsed.pitch ?? null,
-                isAngle: parsed.isAngle === true,
-                hitMarginVersion: parsed.hitMarginVersion || null,
-                judgeCodeVersion: parsed.judgeCodeVersion || null
-            };
         } else if (fileName.endsWith('.crpl2')) {
             if (typeof Crpl2 === 'undefined') {
                 throw new Error('concrpl2.js library is not loaded!');
@@ -2963,33 +3296,57 @@ async function LoadFile(file) {
             const parsed = JSON.parse(json);
 
             data = {
-                offsets: processOffsets(parsed.offsets),
-                versionText: 'CRPL2',
-                songName: parsed.songName,
-                levelPath: parsed.levelPath,
-                timestamp: parsed.timestamp / 1000,
-                bpm: null,
-                speed: null,
-                pitch: null,
-                isAngle: true,
-                hitMarginVersion: null,
-                judgeCodeVersion: null
+                header: {
+                    songName: parsed.songName,
+                    levelPath: parsed.levelPath,
+                    // CRPL2 stamps milliseconds where TimingShow stamps seconds.
+                    timestamp: parsed.timestamp / 1000,
+                    bpm: null,
+                    speed: null,
+                    pitch: null,
+                    isAngle: true,
+                    versionText: 'CRPL2',
+                    hitMarginVersion: null,
+                    judgeCodeVersion: null
+                },
+                players: [{ tuples: parsed.offsets, timeFirst: false }],
+                playerCount: 1,
+                truncated: false
             };
         } else {
             const arrayBuffer = await file.arrayBuffer();
             let fileData = new Uint8Array(arrayBuffer);
             const isGzip = fileName.endsWith('.gz') || (fileData.length > 2 && fileData[0] === 0x1F && fileData[1] === 0x8B);
+            let gzipTruncated = false;
             if (isGzip) {
                 if (typeof pako === 'undefined') {
                     throw new Error('pako library is not loaded!');
                 }
-                fileData = pako.ungzip(fileData);
+                const unwrapped = gunzipLog(fileData);
+                fileData = unwrapped.bytes;
+                gzipTruncated = unwrapped.truncated;
             }
 
             data = parseTlogData(fileData);
+            if (gzipTruncated) data.truncated = true;
         }
 
-        globalOffsets = data.offsets;
+        // The records of every player, built once here. processOffsetRecords
+        // numbers the hits of the stream it is given, so the pass has to run per
+        // player: a shared pass would carry the hit axis across players and make
+        // the second player's first hit look like a continuation of the first's.
+        // At least one slot even when the file names none: a log cut off before
+        // the first player array is still worth showing -- its header, and the
+        // note that it was truncated -- and the panel is driven by there being
+        // a log at all rather than by records existing.
+        const slotCount = Math.max(data.playerCount, 1);
+        globalPlayers = [];
+        for (let id = 0; id < slotCount; id++) {
+            const stream = data.players[id];
+            globalPlayers.push(stream ? processOffsetRecords(stream.tuples, stream.timeFirst) : []);
+        }
+        activePlayer = 0;
+        globalOffsets = globalPlayers[0];
 
         // Hit numbers from the previous file mean nothing against this one, and
         // a stale range is invisible when it goes wrong: every range-aware chart
@@ -2998,16 +3355,18 @@ async function LoadFile(file) {
         invalidateSelection();
 
         currentMetaData = {
-            versionText: data.versionText,
-            songName: data.songName,
-            levelPath: data.levelPath,
-            timestamp: data.timestamp,
-            bpm: data.bpm ?? null,
-            speed: data.speed ?? null,
-            pitch: data.pitch ?? null,
-            isAngle: data.isAngle,
-            hitMarginVersion: data.hitMarginVersion || null,
-            judgeCodeVersion: data.judgeCodeVersion || null
+            versionText: data.header.versionText,
+            songName: data.header.songName,
+            levelPath: data.header.levelPath,
+            timestamp: data.header.timestamp,
+            bpm: data.header.bpm ?? null,
+            speed: data.header.speed ?? null,
+            pitch: data.header.pitch ?? null,
+            isAngle: data.header.isAngle,
+            hitMarginVersion: data.header.hitMarginVersion || null,
+            judgeCodeVersion: data.header.judgeCodeVersion || null,
+            playerCount: data.playerCount,
+            truncated: data.truncated === true
         };
 
         updateMetaInfo();
@@ -3018,6 +3377,27 @@ async function LoadFile(file) {
         alert(t('parseFailed') + '\n' + err.message);
         console.error(err);
     }
+}
+
+// Which player the page is analysing. Switching is a re-point of globalOffsets
+// at another array built during import: every chart, the stat cards and the
+// selection read that one variable, so nothing else has to know a player can
+// change.
+function setActivePlayer(playerId) {
+    const id = Math.round(Number(playerId));
+    if (!Number.isFinite(id) || id < 0 || id >= globalPlayers.length || id === activePlayer) return;
+
+    activePlayer = id;
+    globalOffsets = globalPlayers[id];
+
+    // A hit number identifies a hit inside one player's stream; kept across the
+    // switch it would silently select a different set of hits.
+    activeRange = null;
+    invalidateSelection();
+
+    updateMetaInfo();
+    calculateStaticStats();
+    updateAllCharts();
 }
 
 function handleRangeInput() {

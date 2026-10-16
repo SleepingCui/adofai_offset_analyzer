@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>tsmz2json</title>
-    <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>    
+    <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
     <style>
         #output {
             background: #f5f5f5;
@@ -14,14 +14,23 @@
             max-height: 500px;
             overflow-y: auto;
         }
+        .hint {
+            color: #666;
+            font-size: 0.9em;
+        }
     </style>
 </head>
 <body>
     <h1>tsmz2json</h1>
-    
+
     <p>
         Drop a .tlog or .tlog.gz file here, or
         <a href="#" id="selectLink">select a file</a>
+    </p>
+    <p class="hint">
+        The binary log is rewritten as a TimingShow JSON v7 log: one
+        <code>offsets_&lt;N&gt;</code> array per player, so co-op logs keep each
+        player's hits apart.
     </p>
     <input type="file" id="fileInput" accept=".tlog,.tlog.gz,.gz" style="display:none">
     <div id="status"></div>
@@ -29,100 +38,107 @@
     <button id="downloadBtn" style="display:none">Download JSON</button>
 
     <script>
+    // Thrown when a record runs past the end of the buffer: the file was still
+    // being written. The readers below catch it and hand back the records that
+    // did make it to disk, because half a run still converts to something
+    // readable.
+    const TRUNCATED = Symbol('log-truncated');
+
     function readString(view, offset) {
         let length = 0;
         let shift = 0;
-        
+
         do {
             const b = view[offset++];
             length |= (b & 0x7F) << shift;
             shift += 7;
         } while (view[offset - 1] & 0x80);
-        
+
         const str = new TextDecoder().decode(
             new Uint8Array(view.buffer, view.byteOffset + offset, length)
         );
         return { str, newOffset: offset + length };
     }
 
+    function bitsToDouble(bits) {
+        const buffer = new ArrayBuffer(8);
+        const view = new DataView(buffer);
+        view.setBigInt64(0, bits, true);
+        return view.getFloat64(0, true);
+    }
+
     //v1 (1.8.2-)
     function parseV1(view, offset) {
         const dv = new DataView(view.buffer, view.byteOffset);
-        const offsets = [];
-        
+        const tuples = [];
+
         while (offset + 12 <= view.byteLength) {
             const timing = dv.getFloat64(offset, true);
             const marginCode = dv.getInt32(offset + 8, true);
-            offsets.push([Math.round(timing * 10000) / 10000, marginCode]);
+            tuples.push([Math.round(timing * 10000) / 10000, marginCode]);
             offset += 12;
         }
-        
-        return offsets;
+
+        // Fixed-width records, so leftovers mean the last one was mid-write.
+        return { tuples, truncated: offset !== view.byteLength };
     }
 
     //v2 (1.9.0+)
     function parseV2(view, offset) {
         const dv = new DataView(view.buffer, view.byteOffset);
-        const offsets = [];
+        const tuples = [];
         let prevTimingBits = 0n;
-        
-        while (offset < view.byteLength) {
-            try {
-                if (offset + 8 > view.byteLength) break;
+
+        const readVarInt = () => {
+            let result = 0;
+            let shift = 0;
+            let bytesRead = 0;
+            let byte;
+            do {
+                if (offset >= view.byteLength) throw TRUNCATED;
+                byte = view[offset++];
+                result += (byte & 0x7F) * Math.pow(2, shift);
+                shift += 7;
+                bytesRead++;
+                if (bytesRead > 5) throw new Error('VarInt exceeds maximum 5 bytes');
+            } while (byte & 0x80);
+            return (result >>> 1) ^ -(result & 1);
+        };
+
+        try {
+            while (offset < view.byteLength) {
+                if (offset + 8 > view.byteLength) throw TRUNCATED;
                 const xorBits = dv.getBigInt64(offset, true);
                 offset += 8;
 
                 const actualBits = xorBits ^ prevTimingBits;
                 prevTimingBits = actualBits;
-                
-                const buffer = new ArrayBuffer(8);
-                const view64 = new DataView(buffer);
-                view64.setBigInt64(0, actualBits, true);
-                const timing = view64.getFloat64(0, true);
-                
-                let marginCode = 0;
-                let shift = 0;
-                let byte;
-                let bytesRead = 0;
-                do {
-                    if (offset >= view.byteLength) {
-                        throw new Error('Unexpected EOF while reading VLQ');
-                    }
-                    byte = view[offset++];
-                    bytesRead++;
-                    marginCode |= (byte & 0x7F) << shift;
-                    shift += 7;
-                    if (bytesRead > 5) {
-                        throw new Error('VLQ exceeds maximum 5 bytes');
-                    }
-                } while (byte & 0x80);
-                
-                offsets.push([Math.round(timing * 10000) / 10000, marginCode]);
-                
-            } catch (e) {
-                console.warn('Error parsing at offset', offset, ':', e.message);
-                break;
+                const timing = bitsToDouble(actualBits);
+                const marginCode = readVarInt();
+                tuples.push([Math.round(timing * 10000) / 10000, marginCode]);
             }
+        } catch (err) {
+            if (err !== TRUNCATED) throw err;
+            return { tuples, truncated: true };
         }
-        
-        return offsets;
+        return { tuples, truncated: false };
     }
 
-
-
-    function parseV5(view, offset) {
-        return parseV5Records(view, offset, false);
-    }
-
-    function parseV7(view, offset) {
-        return parseV5Records(view, offset, true);
-    }
-
-    function parseV5Records(view, offset, compactXor) {
+    // Records of a v5+ stream, grouped by player. The XOR chains run across the
+    // whole file, including across players -- they are the writer's history of
+    // the previous record, not a per-player one.
+    function parseBinaryRecords(view, offset, options) {
+        const compactXor = options.compactXor;
+        const hasPlayerId = options.hasPlayerId;
         const dv = new DataView(view.buffer, view.byteOffset);
-        const offsets = [];
+        const streams = [];
         let prevTimeBits = 0n;
         let prevValueBits = 0n;
+
+        const readByte = () => {
+            if (offset >= view.byteLength) throw TRUNCATED;
+            return view[offset++];
+        };
 
         const readZigZagVarInt = () => {
             let result = 0;
@@ -130,68 +146,75 @@
             let byte;
             let count = 0;
             do {
-                if (offset >= view.byteLength) throw new Error('Unexpected EOF while reading v5 VarInt');
-                byte = view[offset++];
+                byte = readByte();
                 result += (byte & 0x7F) * Math.pow(2, shift);
                 shift += 7;
                 count++;
-                if (count > 5) throw new Error('v5 VarInt exceeds maximum 5 bytes');
+                if (count > 5) throw new Error('VarInt exceeds maximum 5 bytes');
             } while (byte & 0x80);
             return (result >>> 1) ^ -(result & 1);
         };
 
         const readXorBits = (previousBits) => {
             if (!compactXor) {
-                if (offset + 8 > view.byteLength) throw new Error('Truncated v5 double');
+                if (offset + 8 > view.byteLength) throw TRUNCATED;
                 const xorBits = dv.getBigInt64(offset, true);
                 offset += 8;
                 return xorBits ^ previousBits;
             }
 
-            if (offset >= view.byteLength) throw new Error('Unexpected EOF while reading v7 double control');
-            const control = view[offset++];
+            const control = readByte();
             if (control === 0) return previousBits;
-            if ((control & 0x80) === 0) throw new Error('Invalid v7 double control byte');
+            if ((control & 0x80) === 0) throw new Error('Invalid compact double control byte');
 
             const leadingBytes = (control >>> 4) & 0x07;
             const significantBytes = control & 0x0F;
             if (significantBytes < 1 || significantBytes > 8 || leadingBytes + significantBytes > 8)
-                throw new Error('Invalid v7 double byte range');
+                throw new Error('Invalid compact double byte range');
 
             const trailingBytes = 8 - leadingBytes - significantBytes;
             let xorBits = 0n;
-            if (offset + significantBytes > view.byteLength)
-                throw new Error('Truncated v7 double payload');
             for (let i = 0; i < significantBytes; i++) {
-                xorBits |= BigInt(view[offset++]) << BigInt(8 * (trailingBytes + i));
+                xorBits |= BigInt(readByte()) << BigInt(8 * (trailingBytes + i));
             }
             return xorBits ^ previousBits;
         };
 
-        while (offset < view.byteLength) {
-            const timeBits = readXorBits(prevTimeBits);
-            prevTimeBits = timeBits;
+        const streamFor = (playerId) => {
+            while (streams.length <= playerId) streams.push([]);
+            return streams[playerId];
+        };
 
-            const valueBits = readXorBits(prevValueBits);
-            prevValueBits = valueBits;
+        try {
+            while (offset < view.byteLength) {
+                const playerId = hasPlayerId ? readByte() : 0;
+                const timeBits = readXorBits(prevTimeBits);
+                prevTimeBits = timeBits;
+                const valueBits = readXorBits(prevValueBits);
+                prevValueBits = valueBits;
 
-            const timeBuffer = new ArrayBuffer(8);
-            const timeView = new DataView(timeBuffer);
-            timeView.setBigInt64(0, timeBits, true);
-            const timeMs = timeView.getFloat64(0, true);
+                const timeMs = bitsToDouble(timeBits);
+                const value = bitsToDouble(valueBits);
+                const rawMarginCode = readZigZagVarInt();
+                const judgeCode = readZigZagVarInt();
+                const isXP = readByte() !== 0;
 
-            const valueBuffer = new ArrayBuffer(8);
-            const valueView = new DataView(valueBuffer);
-            valueView.setBigInt64(0, valueBits, true);
-            const value = valueView.getFloat64(0, true);
-
-            const rawMarginCode = readZigZagVarInt();
-            const judgeCode = readZigZagVarInt();
-            if (offset >= view.byteLength) throw new Error(`Truncated v${compactXor ? 7 : 5} XPerfect flag`);
-            const isXP = view[offset++] !== 0;
-            offsets.push([Math.round(timeMs * 1000) / 1000, Math.round(value * 10000) / 10000, rawMarginCode, judgeCode, isXP]);
+                // Fixed columns per player. v7 spells them as
+                // [timeMs, value, rawMarginCode, judgeCode, isXPerfect] with
+                // song time first, so every stream leaves here that way.
+                streamFor(playerId).push([
+                    Math.round(timeMs * 1000) / 1000,
+                    value,
+                    rawMarginCode,
+                    judgeCode,
+                    isXP ? 1 : 0
+                ]);
+            }
+        } catch (err) {
+            if (err !== TRUNCATED) throw err;
+            return { streams, truncated: true };
         }
-        return offsets;
+        return { streams, truncated: false };
     }
 
     const HIT_MARGIN_VERSIONS = { 1: 'Legacy', 2: 'Game34' };
@@ -200,13 +223,13 @@
         const view = new Uint8Array(decompressed);
         const dv = new DataView(decompressed.buffer, decompressed.byteOffset);
         let offset = 0;
-        
+
         const magic = new TextDecoder().decode(view.slice(offset, offset + 4));
         if (magic !== 'TSMZ') {
             throw new Error('Invalid file format: ' + magic);
         }
         offset += 4;
-        
+
         const version = view[offset++];
         const timestamp = dv.getBigInt64(offset, true);
         offset += 8;
@@ -223,19 +246,49 @@
             isAngle = view[offset++] === 1;
         }
 
-        let offsets;
-        let hitMarginVersion = null;
-        let judgeCodeVersion = null;
+        let hitMarginVersion = 'Unknown';
+        let judgeCodeVersion = 1;
+        let playerCount = 1;
+        let players = [];
+        let truncated = false;
+
         if (version >= 5) {
             if (offset + 2 > view.byteLength) throw new Error('Missing v5 format metadata');
-            hitMarginVersion = view[offset++];
+            hitMarginVersion = HIT_MARGIN_VERSIONS[view[offset++]] ?? 'Unknown';
             judgeCodeVersion = view[offset++];
-            offsets = (version >= 7 ? parseV7(view, offset) : parseV5(view, offset))
-                .map(r => [r[0], r[1], r[2], r[3], r[4] ? 1 : 0]);
+
+            // v8 counts the players in the header and names the player at the
+            // start of every record; v5..v7 are single-player and do neither.
+            let declaredPlayers = 1;
+            if (version >= 8) {
+                const declared = view[offset++];
+                declaredPlayers = declared > 0 ? declared : 1;
+            }
+
+            const records = parseBinaryRecords(view, offset, {
+                compactXor: version >= 7,
+                hasPlayerId: version >= 8
+            });
+            truncated = records.truncated;
+
+            // The header's count wins: a player who logged no hits still keeps
+            // their own (empty) array, so the numbering matches the game.
+            playerCount = Math.max(declaredPlayers, records.streams.length, 1);
+            for (let id = 0; id < playerCount; id++) {
+                players.push(records.streams[id] || []);
+            }
         } else if (version === 1) {
-            offsets = parseV1(view, offset);
-        } else if (version >= 2) {
-            offsets = parseV2(view, offset);
+            const records = parseV1(view, offset);
+            truncated = records.truncated;
+            // No song time and no judge code in these logs: the first column is
+            // the offset itself, and the margin code is all the judgment there
+            // is. Song time is written as null (which v7 allows) and the judge
+            // column is left null so readers fall back to the margin code.
+            players = [records.tuples.map(tuple => [null, tuple[0], tuple[1], null, 0])];
+        } else if (version >= 2 && version < 5) {
+            const records = parseV2(view, offset);
+            truncated = records.truncated;
+            players = [records.tuples.map(tuple => [null, tuple[0], tuple[1], null, 0])];
         } else {
             throw new Error(`Unsupported version: ${version}`);
         }
@@ -249,54 +302,125 @@
             pitch: pitch,
             isAngle: isAngle,
 
-            formatVersion: version,
-            hitMarginVersion: hitMarginVersion === null
-                ? null
-                : (HIT_MARGIN_VERSIONS[hitMarginVersion] ?? hitMarginVersion),
+            sourceVersion: version,
+            hitMarginVersion: hitMarginVersion,
             judgeCodeVersion: judgeCodeVersion,
-            offsets: offsets
+            playerCount: playerCount,
+            truncated: truncated,
+            offsets: players
         };
+    }
+
+    // Unwraps the gzip layer, and says whether the stream it came from was
+    // finished. A log still being written ends in a half-flushed deflate block,
+    // which pako's one-shot ungzip answers with `undefined` rather than an
+    // error; the streaming inflator keeps what it did decode, so a run in
+    // progress is still convertible.
+    function gunzipLog(bytes) {
+        const oneShot = pako.ungzip(bytes);
+        if (oneShot) return { bytes: oneShot, truncated: false };
+
+        const inflator = new pako.Inflate();
+        inflator.push(bytes, true);
+
+        // pako only hands an output buffer over as a chunk once it is full. The
+        // rest -- everything written since the last full buffer -- is handed
+        // over when the stream *ends*, which is the part that never arrived; it
+        // is still sitting in the inflator's own output buffer.
+        const pieces = (inflator.chunks || []).slice();
+        const buffer = inflator.strm;
+        if (buffer && buffer.next_out > 0) pieces.push(buffer.output.subarray(0, buffer.next_out));
+
+        const total = pieces.reduce((sum, piece) => sum + piece.length, 0);
+        if (total === 0) {
+            throw new Error(inflator.err ? String(inflator.err) : 'gzip stream is incomplete');
+        }
+
+        const inflated = new Uint8Array(total);
+        let at = 0;
+        pieces.forEach(piece => { inflated.set(piece, at); at += piece.length; });
+        return { bytes: inflated, truncated: true };
+    }
+
+    // The converted file is a TimingShow JSON v7 log, whose current format
+    // version is 7 whatever the binary it came from was called.
+    const JSON_FORMAT_VERSION = 7;
+
+    function toJsonLog(result) {
+        const log = {
+            songName: result.songName,
+            levelPath: result.levelPath,
+            timestamp: result.timestamp,
+            bpm: result.bpm,
+            speed: result.speed,
+            pitch: result.pitch,
+            isAngle: result.isAngle,
+            formatVersion: JSON_FORMAT_VERSION,
+            hitMarginVersion: result.hitMarginVersion,
+            judgeCodeVersion: result.judgeCodeVersion
+        };
+
+        // One array per player, keyed 1-based as the JSON writer does it, so a
+        // converted co-op log reads exactly like one the game wrote itself.
+        result.offsets.forEach((tupleList, id) => {
+            log[`offsets_${id + 1}`] = tupleList;
+        });
+
+        // Only present when the source really was cut short; a reader that does
+        // not know the field ignores it.
+        if (result.truncated) log.truncated = true;
+        return log;
     }
 
     async function handleFile(file) {
         const status = document.getElementById('status');
         const output = document.getElementById('output');
         const downloadBtn = document.getElementById('downloadBtn');
-        
+
         status.textContent = 'Processing...';
         status.className = '';
-        
+
         try {
             const arrayBuffer = await file.arrayBuffer();
             let fileData = new Uint8Array(arrayBuffer);
-            
-            const isGzip = file.name.toLowerCase().endsWith('.gz') || 
+            let truncated = false;
+
+            const isGzip = file.name.toLowerCase().endsWith('.gz') ||
                           (fileData.length > 2 && fileData[0] === 0x1F && fileData[1] === 0x8B);
-            
+
             if (isGzip) {
                 status.textContent = 'Decompressing...';
-                
+
                 try {
-                    fileData = pako.ungzip(fileData);
+                    const unwrapped = gunzipLog(fileData);
+                    fileData = unwrapped.bytes;
+                    truncated = unwrapped.truncated;
                 } catch (e) {
                     throw new Error('Failed to decompress gzip file: ' + e.message);
                 }
             }
-            
+
             status.textContent = 'Parsing...';
-            
+
             const result = parseData(fileData);
-            const versionInfo = `v${result.formatVersion}`
-                + (result.hitMarginVersion ? `, ${result.hitMarginVersion}` : '');
-            const jsonString = JSON.stringify(result, null, 2);
+            // A truncated source stays truncated through the conversion.
+            result.truncated = result.truncated || truncated;
+
+            const recordCount = result.offsets.reduce((sum, tuples) => sum + tuples.length, 0);
+            const jsonString = JSON.stringify(toJsonLog(result), null, 2);
             output.textContent = jsonString;
             output.style.display = 'block';
-            status.textContent = `Conversion successful! (${result.offsets.length} records, ${versionInfo})`;
+
+            const versionInfo = `binary v${result.sourceVersion}`
+                + (result.playerCount > 1 ? `, ${result.playerCount} players` : '')
+                + (result.hitMarginVersion ? `, ${result.hitMarginVersion}` : '');
+            status.textContent = `Conversion successful! (${recordCount} records, ${versionInfo}`
+                + (result.truncated ? ', source truncated' : '') + ')';
             status.className = 'success';
             downloadBtn.style.display = 'inline';
             window._jsonResult = jsonString;
             window._fileName = file.name.replace('.tlog.gz', '.json').replace('.tlog', '.json').replace('.gz', '.json');
-            
+
         } catch (err) {
             status.textContent = 'Error: ' + err.message;
             status.className = 'error';
@@ -320,7 +444,7 @@
 
     document.getElementById('downloadBtn').addEventListener('click', () => {
         if (!window._jsonResult) return;
-        
+
         const blob = new Blob([window._jsonResult], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -340,7 +464,7 @@
     document.addEventListener('drop', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        
+
         const file = e.dataTransfer.files[0];
         if (file) handleFile(file);
     });

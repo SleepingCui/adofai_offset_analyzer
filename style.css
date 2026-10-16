@@ -175,6 +175,20 @@ line-height: 1.5;
 color: var(--text-strong);
 font-weight: 500;
 }
+/* Only rendered for logs with more than one player; sits under the song name so
+the picker is the second thing read, right before the charts it filters. */
+.player-select-row {
+margin-top: 8px;
+}
+.player-select-row .lang-select {
+padding: 5px 10px;
+font-size: 0.85rem;
+max-width: 100%;
+}
+.meta-warning {
+margin-top: 6px;
+color: var(--warning-color);
+}
 #metaToggle {
 margin-top: 8px;
 padding: 4px 10px;
