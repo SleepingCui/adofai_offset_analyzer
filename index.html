@@ -76,9 +76,6 @@
     </div>
 
     <div class="charts-container" id="chartsContainer">
-        <!-- Sections stay hidden until there is data to plot; see
-             updatePageState(). -->
-        <!-- Scatter Chart Section -->
         <div class="chart-section" id="sectionScatter" hidden>
             <h3 data-i18n="scatterTitle">偏移量散点图</h3>
             <div class="chart-wrapper">
@@ -91,6 +88,10 @@
                         <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
                             <input type="checkbox" id="ignoreOutliersCheckbox" style="cursor: pointer; accent-color: var(--accent-color);">
                             <span data-i18n="ignoreOutliers">忽略离群点</span>
+                        </label>
+                        <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                            <input type="checkbox" id="scatterShowBandsCheckbox" checked style="cursor: pointer; accent-color: var(--accent-color);">
+                            <span data-i18n="showJudgeBands">显示判定色带</span>
                         </label>
                         <label class="range-control">
                             <span data-i18n="pointSize">点大小</span>
@@ -117,7 +118,6 @@
             </div>
         </div>
 
-        <!-- Rolling Mean / Sigma Band Chart Section -->
         <div class="chart-section" id="sectionRolling" hidden>
             <h3 data-i18n="rollingTitle">滑动均值与波动带</h3>
             <div class="stat-tiles" id="rollingStats"></div>
@@ -139,7 +139,6 @@
             </div>
         </div>
 
-        <!-- Return Map Chart Section -->
         <div class="chart-section" id="sectionReturn" hidden>
             <h3 data-i18n="returnTitle">相邻两键偏移量关系</h3>
             <div class="stat-tiles" id="returnStats"></div>
@@ -151,7 +150,6 @@
             </div>
         </div>
 
-        <!-- Autocorrelation Section -->
         <div class="chart-section" id="sectionAcf" hidden>
             <h3 data-i18n="acfTitle">自相关图</h3>
             <div class="stat-tiles" id="acfStats"></div>
@@ -163,7 +161,6 @@
             </div>
         </div>
 
-        <!-- Normal Distribution Chart Section -->
         <div class="chart-section" id="sectionDistribution" hidden>
             <h3 data-i18n="distTitle">正态分布图</h3>
             <div class="stat-tiles" id="distributionStats"></div>
@@ -175,7 +172,6 @@
             </div>
         </div>
 
-        <!-- Offset Difference (Delta) Histogram Section -->
         <div class="chart-section" id="sectionDelta" hidden>
             <h3 data-i18n="deltaTitle">相邻偏移量差值分布</h3>
             <div class="stat-tiles" id="deltaStats"></div>
@@ -187,7 +183,6 @@
             </div>
         </div>
 
-        <!-- Judgment Breakdown Pie Chart Section -->
         <div class="chart-section" id="sectionPie" hidden>
             <h3 data-i18n="pieTitle">判定分布比例</h3>
             <div class="chart-wrapper">
@@ -197,7 +192,6 @@
             </div>
         </div>
 
-        <!-- XACC Progression Chart Section -->
         <div class="chart-section" id="sectionXacc" hidden>
             <h3 data-i18n="xaccTitle">XACC变化曲线</h3>
             <div class="chart-wrapper">
@@ -213,7 +207,6 @@
             </div>
         </div>
 
-        <!-- Consecutive Perfect Streak Strip -->
         <div class="chart-section" id="sectionCombo" hidden>
             <h3 data-i18n="comboTitle">连续 Perfect 热力条</h3>
             <div class="stat-tiles" id="comboStats"></div>

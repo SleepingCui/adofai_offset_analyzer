@@ -1512,6 +1512,63 @@ function renderAcfChart() {
     });
 }
 
+// Judgment window bands for the scatter plot. Logs do not record the floor
+// difficulty, so the pass window uses the same normal-difficulty threshold as
+// TimingShow's log replay; pitch and speed scale the effective BPM.
+const JUDGE_BAND_THRESHOLD_BPM = 310;
+const JUDGE_BAND_PASS_BASE_MS = 20000 / JUDGE_BAND_THRESHOLD_BPM;
+const JUDGE_BAND_MIN_WINDOW_MS = 25;
+const JUDGE_BAND_XP_MIN_MS = 16.666666;
+
+function calcJudgeWindowMs(bpm, angle, baseMs) {
+    const angleTerm = 60000 / bpm * angle / 180;
+    return Math.max(Math.max(angleTerm, baseMs), JUDGE_BAND_MIN_WINDOW_MS);
+}
+
+function computeJudgeWindows() {
+    // Angle logs store degrees, not milliseconds, so they get no ms bands.
+    if (!currentMetaData || currentMetaData.isAngle) return null;
+
+    const rawBpm = Number(currentMetaData.bpm);
+    const pitch = Number(currentMetaData.pitch) > 0 ? Number(currentMetaData.pitch) : 1;
+    const speed = Number(currentMetaData.speed) > 0 ? Number(currentMetaData.speed) : 1;
+    const bpm = rawBpm > 0 ? rawBpm * pitch * speed : JUDGE_BAND_THRESHOLD_BPM;
+
+    return {
+        perfect: calcJudgeWindowMs(bpm, 30, 20),
+        elPerfect: calcJudgeWindowMs(bpm, 45, 30),
+        pass: calcJudgeWindowMs(bpm, 60, JUDGE_BAND_PASS_BASE_MS),
+        xp: Math.max(60000 / bpm * 12.5 / 180, JUDGE_BAND_XP_MIN_MS)
+    };
+}
+
+function buildJudgeBandAnnotations(bands) {
+    const annotations = {};
+    if (!bands) return annotations;
+
+    const addBand = (id, from, to, color) => {
+        annotations[id] = {
+            type: 'box',
+            yMin: from,
+            yMax: to,
+            backgroundColor: color,
+            borderWidth: 0,
+            // Keep the data points readable on top of the tinted bands.
+            drawTime: 'beforeDatasetsDraw'
+        };
+    };
+
+    // Early/Late outermost, then E/L Perfect, Perfect and finally XPerfect:
+    // later annotations paint on top of earlier ones.
+    addBand('bandEarlyLateEarly', -bands.pass, -bands.elPerfect, 'rgba(242, 102, 77, 0.10)');
+    addBand('bandEarlyLateLate', bands.elPerfect, bands.pass, 'rgba(242, 102, 77, 0.10)');
+    addBand('bandElPerfectEarly', -bands.elPerfect, -bands.perfect, 'rgba(255, 217, 51, 0.12)');
+    addBand('bandElPerfectLate', bands.perfect, bands.elPerfect, 'rgba(255, 217, 51, 0.12)');
+    addBand('bandPerfect', -bands.perfect, bands.perfect, 'rgba(64, 230, 89, 0.14)');
+    addBand('bandXPerfect', -bands.xp, bands.xp, 'rgba(77, 204, 255, 0.14)');
+    return annotations;
+}
+
 function renderScatterChart() {
     if (globalOffsets.length === 0) return;
     
@@ -1527,6 +1584,10 @@ function renderScatterChart() {
     const { lowerBound, upperBound } = calculateOutlierBounds(globalOffsets);
     const useHitAxis = document.getElementById('scatterUseHitCheckbox')?.checked === true;
     const useTimeline = !useHitAxis && hasTimelineData();
+    const showBands = document.getElementById('scatterShowBandsCheckbox')?.checked === true;
+    const annotations = showBands
+        ? buildJudgeBandAnnotations(computeJudgeWindows())
+        : {};
     const numContainer = document.getElementById('pureNumbersContainer');
     numContainer.innerHTML = '';
     getDisplayOrder().forEach(type => {
@@ -1653,6 +1714,39 @@ function renderScatterChart() {
         });
     }
     
+    // Bands are added first so the reference lines stay on top of them.
+    annotations.line0ms = {
+        type: 'line',
+        yMin: 0,
+        yMax: 0,
+        borderColor: 'rgba(255, 255, 255, 0.75)',
+        borderWidth: 1.5,
+        label: {
+            display: true,
+            content: `0${unit}`,
+            position: 'start',
+            backgroundColor: 'rgba(0,0,0,0.6)',
+            color: '#fff',
+            font: { size: 10 }
+        }
+    };
+    annotations.lineAvg = {
+        type: 'line',
+        yMin: globalAvg,
+        yMax: globalAvg,
+        borderColor: '#ffb74d',
+        borderWidth: 2,
+        borderDash: [5, 5],
+        label: {
+            display: true,
+            content: `Avg: ${globalAvg >= 0 ? '+' : ''}${globalAvg.toFixed(2)}${unit}`,
+            position: 'end',
+            backgroundColor: 'rgba(230, 124, 11, 0.8)',
+            color: '#fff',
+            font: { size: 10, weight: 'bold' }
+        }
+    };
+
     if (myChart) {
         myChart.destroy();
     }
@@ -1707,39 +1801,7 @@ function renderScatterChart() {
                     }
                 },
                 annotation: {
-                    annotations: {
-                        line0ms: {
-                            type: 'line',
-                            yMin: 0,
-                            yMax: 0,
-                            borderColor: 'rgba(255, 255, 255, 0.75)',
-                            borderWidth: 1.5,
-                            label: {
-                                display: true,
-                                content: `0${unit}`,
-                                position: 'start',
-                                backgroundColor: 'rgba(0,0,0,0.6)',
-                                color: '#fff',
-                                font: { size: 10 }
-                            }
-                        },
-                        lineAvg: {
-                            type: 'line',
-                            yMin: globalAvg,
-                            yMax: globalAvg,
-                            borderColor: '#ffb74d',
-                            borderWidth: 2,
-                            borderDash: [5, 5],
-                            label: {
-                                display: true,
-                                content: `Avg: ${globalAvg >= 0 ? '+' : ''}${globalAvg.toFixed(2)}${unit}`,
-                                position: 'end',
-                                backgroundColor: 'rgba(230, 124, 11, 0.8)',
-                                color: '#fff',
-                                font: { size: 10, weight: 'bold' }
-                            }
-                        }
-                    }
+                    annotations: annotations
                 }
             }
         }
@@ -2495,6 +2557,8 @@ function clearData() {
 
     const scatterUseHitCheckbox = document.getElementById('scatterUseHitCheckbox');
     if (scatterUseHitCheckbox) scatterUseHitCheckbox.checked = false;
+    const scatterShowBandsCheckbox = document.getElementById('scatterShowBandsCheckbox');
+    if (scatterShowBandsCheckbox) scatterShowBandsCheckbox.checked = true;
     const xaccUseHitCheckbox = document.getElementById('xaccUseHitCheckbox');
     if (xaccUseHitCheckbox) xaccUseHitCheckbox.checked = false;
     const comboUseHitCheckbox = document.getElementById('comboUseHitCheckbox');
@@ -3423,6 +3487,10 @@ document.getElementById('ignoreOutliersCheckbox')?.addEventListener('change', (e
 });
 
 document.getElementById('scatterUseHitCheckbox')?.addEventListener('change', () => {
+    renderScatterChart();
+});
+
+document.getElementById('scatterShowBandsCheckbox')?.addEventListener('change', () => {
     renderScatterChart();
 });
 
