@@ -21,7 +21,7 @@ function t(key) {
 }
 
 function getUnit() {
-    return (currentMetaData && currentMetaData.isAngle) ? '°' : ' ms';
+    return displayUnit === 'deg' ? '°' : ' ms';
 }
 
 function updateMetaInfo() {
@@ -41,6 +41,7 @@ function updateMetaInfo() {
             toggleEl.innerText = t('showDetails');
             toggleEl.setAttribute('aria-expanded', 'false');
         }
+        updateUnitControl();
         return;
     }
 
@@ -77,6 +78,14 @@ function updateMetaInfo() {
         const playerNote = currentMetaData.playerCount > 1
             ? ` (${t('playerLabel')} ${activePlayer + 1}/${currentMetaData.playerCount})`
             : '';
+        // How many of this player's hits actually carry the v8/v9 context. Zero
+        // is not an error -- it is what every older log looks like -- so it is
+        // reported as "none" rather than hidden.
+        const contextCount = globalOffsets.reduce(
+            (count, item) => count + (item[REC.BPM] !== null ? 1 : 0), 0);
+        const contextText = contextCount > 0
+            ? `${contextCount.toLocaleString()} / ${globalOffsets.length.toLocaleString()}`
+            : t('contextNone');
         detailsEl.innerHTML = `
             <div><strong>${t('formatVersion')}:</strong> ${currentMetaData.versionText || 'Unknown'}${truncatedSuffix}</div>
             <div><strong>${t('analysisTime')}:</strong> ${currentMetaData.timestamp ? new Date(currentMetaData.timestamp * 1000).toLocaleString() : 'Unknown'}</div>
@@ -85,7 +94,8 @@ function updateMetaInfo() {
             <div><strong>${t('bpm')}:</strong> ${currentMetaData.bpm ?? 'Unknown'}</div>
             <div><strong>${t('speed')}:</strong> ${currentMetaData.speed ?? 'Unknown'}</div>
             <div><strong>${t('pitch')}:</strong> ${currentMetaData.pitch ?? 'Unknown'}</div>
-            <div><strong>${t('valueMode')}:</strong> ${currentMetaData.isAngle ? 'Angle' : 'Timing'}</div>
+            <div><strong>${t('valueMode')}:</strong> ${displayUnit === 'deg' ? 'Angle (°)' : 'Timing (ms)'}</div>
+            <div><strong>${t('contextCoverage')}:</strong> ${contextText}</div>
             <div><strong>${t('playerCount')}:</strong> ${currentMetaData.playerCount}</div>
             <div><strong>${t('recordCount')}:</strong> ${globalOffsets.length.toLocaleString()}${playerNote}</div>
             ${currentMetaData.truncated ? `<div class="meta-warning">${t('truncatedWarning')}</div>` : ''}
@@ -97,6 +107,80 @@ function updateMetaInfo() {
         toggleEl.innerText = metaExpanded ? t('hideDetails') : t('showDetails');
         toggleEl.setAttribute('aria-expanded', String(metaExpanded));
     }
+
+    updateUnitControl();
+}
+
+// Keeps the unit selector in step with what the loaded log can actually
+// produce. The native unit is always available; the other one needs the v8/v9
+// per-hit context on every record, so a partially contextualised log cannot
+// offer it without mixing units inside one chart.
+function updateUnitControl() {
+    const control = document.getElementById('unitControl');
+    const select = document.getElementById('unitSelect');
+    if (!control || !select) return;
+
+    const hasLog = currentMetaData !== null;
+    control.hidden = !hasLog;
+    if (!hasLog) return;
+
+    select.value = displayUnit;
+    const msOption = select.querySelector('option[value="ms"]');
+    const degOption = select.querySelector('option[value="deg"]');
+    if (msOption) msOption.disabled = !unitAvailability.ms;
+    if (degOption) degOption.disabled = !unitAvailability.deg;
+}
+
+function buildPlayerRecords(unit) {
+    return globalRawPlayers.map(stream => stream
+        ? processOffsetRecords(stream.tuples, stream.timeFirst, { isAngle: logIsAngle, unit })
+        : []);
+}
+
+function computeUnitAvailability(players) {
+    let canMs = true;
+    let canDeg = true;
+    let sawValue = false;
+
+    players.forEach(records => {
+        records.forEach(item => {
+            if (!Number.isFinite(item[REC.NATIVE])) return;
+            sawValue = true;
+            if (!Number.isFinite(item[REC.MS])) canMs = false;
+            if (!Number.isFinite(item[REC.ANGLE])) canDeg = false;
+        });
+    });
+
+    // An empty run has no unit to convert; offer its native one.
+    if (!sawValue) return { ms: !logIsAngle, deg: logIsAngle };
+    return { ms: canMs, deg: canDeg };
+}
+
+function setDisplayUnit(unit) {
+    if (unit !== 'ms' && unit !== 'deg') return;
+    if (unit === displayUnit || !unitAvailability[unit]) {
+        updateUnitControl();
+        return;
+    }
+
+    displayUnit = unit;
+    globalPlayers = buildPlayerRecords(unit);
+    globalOffsets = globalPlayers[activePlayer] || [];
+
+    // The range filter holds numbers in the previous unit.
+    minOffsetFilter = null;
+    maxOffsetFilter = null;
+    const minInput = document.getElementById('minOffsetInput');
+    const maxInput = document.getElementById('maxOffsetInput');
+    if (minInput) minInput.value = '';
+    if (maxInput) maxInput.value = '';
+
+    activeRange = null;
+    invalidateSelection();
+
+    updateMetaInfo();
+    calculateStaticStats();
+    updateAllCharts();
 }
 
 function setLanguage(lang) {
@@ -178,6 +262,17 @@ let globalOffsets = [];
 // one entry here even in the single player case, so nothing downstream needs a
 // separate "is this a co-op log" path.
 let globalPlayers = [];
+// The parsed streams the records above were built from, kept so the values can
+// be rebuilt in the other unit (ms or degrees) without re-reading the file.
+let globalRawPlayers = [];
+let logIsAngle = false;
+// What every chart plots on the y axis: 'ms' or 'deg'. Logs record one of the
+// two natively; the per-hit context added in v8/v9 lets us compute the other.
+let displayUnit = 'ms';
+// Which of the two units can be produced for every hit of the loaded log. The
+// unit selector disables the one that cannot, because a chart that silently
+// plots a mix of milliseconds and degrees is worse than one that offers less.
+let unitAvailability = { ms: true, deg: false };
 let activePlayer = 0;
 let globalAvg = 0;
 let globalStdDev = 0;
@@ -1525,15 +1620,26 @@ function calcJudgeWindowMs(bpm, angle, baseMs) {
     return Math.max(Math.max(angleTerm, baseMs), JUDGE_BAND_MIN_WINDOW_MS);
 }
 
-function computeJudgeWindows() {
-    // Angle logs store degrees, not milliseconds, so they get no ms bands.
-    if (!currentMetaData || currentMetaData.isAngle) return null;
+// The effective BPM the bands would have used before per-hit context existed:
+// the header's BPM scaled by speed and pitch, or the difficulty threshold when
+// the log does not say (old angle logs, CRPL2).
+function headerEffectiveBpm() {
+    const rawBpm = Number(currentMetaData && currentMetaData.bpm);
+    const pitch = Number(currentMetaData && currentMetaData.pitch) > 0 ? Number(currentMetaData.pitch) : 1;
+    const speed = Number(currentMetaData && currentMetaData.speed) > 0 ? Number(currentMetaData.speed) : 1;
+    return rawBpm > 0 ? rawBpm * pitch * speed : JUDGE_BAND_THRESHOLD_BPM;
+}
 
-    const rawBpm = Number(currentMetaData.bpm);
-    const pitch = Number(currentMetaData.pitch) > 0 ? Number(currentMetaData.pitch) : 1;
-    const speed = Number(currentMetaData.speed) > 0 ? Number(currentMetaData.speed) : 1;
-    const bpm = rawBpm > 0 ? rawBpm * pitch * speed : JUDGE_BAND_THRESHOLD_BPM;
+// The BPM at the moment of one hit, or null when the log has no context for it.
+// Speed and pitch already scale the BPM, exactly as the ms/deg conversion does.
+function recordEffectiveBpm(record) {
+    const bpm = record[REC.BPM];
+    const speed = record[REC.SPEED];
+    const pitch = record[REC.PITCH];
+    return hasUsableHitParams(bpm, speed, pitch) ? bpm * speed * pitch : null;
+}
 
+function judgeWindowsForBpm(bpm) {
     return {
         perfect: calcJudgeWindowMs(bpm, 30, 20),
         elPerfect: calcJudgeWindowMs(bpm, 45, 30),
@@ -1542,30 +1648,100 @@ function computeJudgeWindows() {
     };
 }
 
-function buildJudgeBandAnnotations(bands) {
-    const annotations = {};
-    if (!bands) return annotations;
+// A window edge in whatever unit the y axis uses. The window is defined in
+// milliseconds, so in degree mode it has to be converted with the same segment
+// BPM -- which is why the bands are segmented by BPM instead of using one
+// header value.
+function bandValue(valueMs, bpm) {
+    return displayUnit === 'deg' ? msToAngle(valueMs, bpm) : valueMs;
+}
 
-    const addBand = (id, from, to, color) => {
-        annotations[id] = {
+// -> [{ bpm, fromX, toX }], one entry per run of consecutive hits that share an
+// effective BPM. A constant-BPM log is one segment, which keeps the old look; a
+// log whose BPM varies gets one band set per stretch. Old records without
+// context borrow the header BPM, like the bands always did.
+const JUDGE_BAND_MAX_SEGMENTS = 60;
+
+function buildJudgeBandSegments(records, useHitAxis) {
+    const fallbackBpm = headerEffectiveBpm();
+    const segments = [];
+
+    for (let index = 0; index < records.length; index++) {
+        const x = getChartX(records[index], index, useHitAxis);
+        if (!Number.isFinite(x)) continue;
+
+        const bpm = recordEffectiveBpm(records[index]) || fallbackBpm;
+        if (!(bpm > 0)) continue;
+
+        const last = segments[segments.length - 1];
+        if (last && Math.abs(bpm - last.bpm) <= Math.max(1e-6, last.bpm * 1e-6)) {
+            last.toX = x;
+        } else {
+            segments.push({ bpm, fromX: x, toX: x });
+        }
+    }
+
+    // Extend each stretch to where the next one starts, so the bands tile
+    // without gaps that would read as unjudged hits.
+    for (let i = 0; i < segments.length - 1; i++) {
+        segments[i].toX = segments[i + 1].fromX;
+    }
+
+    if (segments.length > JUDGE_BAND_MAX_SEGMENTS) {
+        // A chart with more BPM changes than bands can carry: fall back to the
+        // median BPM over the whole run rather than painting hundreds of boxes.
+        const sorted = segments.map(segment => segment.bpm).sort((a, b) => a - b);
+        const median = sorted[Math.floor(sorted.length / 2)];
+        return [{ bpm: median, fromX: segments[0].fromX, toX: segments[segments.length - 1].toX }];
+    }
+    return segments;
+}
+
+function buildJudgeBandAnnotations(records, useHitAxis, dynamicBands) {
+    const annotations = {};
+    // The bands only describe milliseconds when the page can produce them; an
+    // angle-only log has no judging window to draw.
+    if (!unitAvailability.ms) return annotations;
+
+    // Static bands use the header BPM for the whole run, which is how they have
+    // always looked. The opt-in mode splits them by each hit's own BPM, so a
+    // chart that changes speed shows the window that actually applied.
+    const segments = dynamicBands
+        ? buildJudgeBandSegments(records, useHitAxis)
+        : [{ bpm: headerEffectiveBpm(), fromX: undefined, toX: undefined }];
+
+    const addBand = (id, fromX, toX, bpm, fromMs, toMs, color) => {
+        const box = {
             type: 'box',
-            yMin: from,
-            yMax: to,
+            yMin: bandValue(fromMs, bpm),
+            yMax: bandValue(toMs, bpm),
             backgroundColor: color,
             borderWidth: 0,
             // Keep the data points readable on top of the tinted bands.
             drawTime: 'beforeDatasetsDraw'
         };
+        // Without bounds the box spans the whole axis, which is what the static
+        // bands want.
+        if (fromX !== undefined) box.xMin = fromX;
+        if (toX !== undefined) box.xMax = toX;
+        annotations[id] = box;
     };
 
-    // Early/Late outermost, then E/L Perfect, Perfect and finally XPerfect:
-    // later annotations paint on top of earlier ones.
-    addBand('bandEarlyLateEarly', -bands.pass, -bands.elPerfect, 'rgba(242, 102, 77, 0.10)');
-    addBand('bandEarlyLateLate', bands.elPerfect, bands.pass, 'rgba(242, 102, 77, 0.10)');
-    addBand('bandElPerfectEarly', -bands.elPerfect, -bands.perfect, 'rgba(255, 217, 51, 0.12)');
-    addBand('bandElPerfectLate', bands.perfect, bands.elPerfect, 'rgba(255, 217, 51, 0.12)');
-    addBand('bandPerfect', -bands.perfect, bands.perfect, 'rgba(64, 230, 89, 0.14)');
-    addBand('bandXPerfect', -bands.xp, bands.xp, 'rgba(77, 204, 255, 0.14)');
+    segments.forEach((segment, segmentIndex) => {
+        const { bpm, fromX, toX } = segment;
+        const bands = judgeWindowsForBpm(bpm);
+        const suffix = `_s${segmentIndex}`;
+
+        // Early/Late outermost, then E/L Perfect, Perfect and finally XPerfect:
+        // later annotations paint on top of earlier ones.
+        addBand('bandEarlyLateEarly' + suffix, fromX, toX, bpm, -bands.pass, -bands.elPerfect, 'rgba(242, 102, 77, 0.10)');
+        addBand('bandEarlyLateLate' + suffix, fromX, toX, bpm, bands.elPerfect, bands.pass, 'rgba(242, 102, 77, 0.10)');
+        addBand('bandElPerfectEarly' + suffix, fromX, toX, bpm, -bands.elPerfect, -bands.perfect, 'rgba(255, 217, 51, 0.12)');
+        addBand('bandElPerfectLate' + suffix, fromX, toX, bpm, bands.perfect, bands.elPerfect, 'rgba(255, 217, 51, 0.12)');
+        addBand('bandPerfect' + suffix, fromX, toX, bpm, -bands.perfect, bands.perfect, 'rgba(64, 230, 89, 0.14)');
+        addBand('bandXPerfect' + suffix, fromX, toX, bpm, -bands.xp, bands.xp, 'rgba(77, 204, 255, 0.14)');
+    });
+
     return annotations;
 }
 
@@ -1585,8 +1761,10 @@ function renderScatterChart() {
     const useHitAxis = document.getElementById('scatterUseHitCheckbox')?.checked === true;
     const useTimeline = !useHitAxis && hasTimelineData();
     const showBands = document.getElementById('scatterShowBandsCheckbox')?.checked === true;
+    const dynamicBands = document.getElementById('scatterDynamicBandsCheckbox')?.checked === true;
+    syncDynamicBandsVisibility();
     const annotations = showBands
-        ? buildJudgeBandAnnotations(computeJudgeWindows())
+        ? buildJudgeBandAnnotations(globalOffsets, useHitAxis, dynamicBands)
         : {};
     const numContainer = document.getElementById('pureNumbersContainer');
     numContainer.innerHTML = '';
@@ -1655,7 +1833,10 @@ function renderScatterChart() {
         if (datasetsMap[marginType]) {
             datasetsMap[marginType].data.push({
                 x: getChartX(item, index, useHitAxis),
-                y: yValue
+                y: yValue,
+                // Carried so the tooltip can describe this particular hit
+                // without a second lookup by hit number.
+                hit: item
             });
         }
     }
@@ -1680,7 +1861,7 @@ function renderScatterChart() {
         }
     }
 
-    const finalDatasets = Object.values(datasetsMap);
+        const finalDatasets = Object.values(datasetsMap);
 
     if (globalOffsets.length > 0) {
         const avgLineData = [];
@@ -1788,7 +1969,32 @@ function renderScatterChart() {
                         label: function(context) {
                             const point = context.raw;
                             const xText = useTimeline ? `${point.x.toFixed(1)} ms` : point.x;
-                            return `${xText}: ${point.y.toFixed(4)}${unit} (${context.dataset.label})`;
+                            const parts = [];
+
+                            // The per-hit context the v8/v9 log carries, folded
+                            // into the same line as the offset so the tooltip
+                            // stays one row tall. Off by default: without it the
+                            // tooltip reads exactly like it did before v8 logs.
+                            const showDetails = document.getElementById('scatterShowHitDetailsCheckbox')?.checked === true;
+                            const hit = point.hit;
+                            if (hit && showDetails) {
+                                const fmt = value => Number(value.toFixed(4)).toString();
+                                if (hit[REC.FLOOR] >= 0) parts.push(`${t('floorLabel')} ${hit[REC.FLOOR]}`);
+                                if (Number.isFinite(hit[REC.ANGLE]) && displayUnit !== 'deg') {
+                                    parts.push(`${hit[REC.ANGLE].toFixed(4)}°`);
+                                }
+                                if (Number.isFinite(hit[REC.MS]) && displayUnit !== 'ms') {
+                                    parts.push(`${hit[REC.MS].toFixed(3)} ms`);
+                                }
+                                if (hit[REC.BPM] !== null && hit[REC.SPEED] !== null && hit[REC.PITCH] !== null) {
+                                    // Effective BPM first, the factors that produced it after it.
+                                    const effectiveBpm = hit[REC.BPM] * hit[REC.SPEED] * hit[REC.PITCH];
+                                    parts.push(`BPM ${fmt(effectiveBpm)} (${fmt(hit[REC.BPM])}×${fmt(hit[REC.SPEED])}×${fmt(hit[REC.PITCH])})`);
+                                }
+                            }
+
+                            const details = parts.length > 0 ? ' · ' + parts.join(' · ') : '';
+                            return `${xText}: ${point.y.toFixed(4)}${unit} (${context.dataset.label})${details}`;
                         }
                     }
                 },
@@ -1811,23 +2017,29 @@ function renderScatterChart() {
 function calculateStaticStats() {
     const totalHits = globalOffsets.length;
     const validOffsets = globalOffsets.map(item => item[0]).filter(val => !isNaN(val));
-    
-    const isAngle = currentMetaData && currentMetaData.isAngle;
+    // UR is defined in milliseconds, so it comes from the ms column regardless
+    // of which unit the page is currently plotting. An angle log without per-hit
+    // BPM has no ms column and therefore no UR.
+    const msOffsets = globalOffsets.map(item => item[REC.MS]).filter(val => Number.isFinite(val));
+
     const urCard = document.getElementById('urCard');
 
     if (urCard) {
-        urCard.style.display = isAngle ? 'none' : 'block';
+        urCard.style.display = msOffsets.length > 0 ? 'block' : 'none';
     }
 
     globalAvg = totalHits > 0 ? (validOffsets.reduce((a, b) => a + b, 0) / totalHits) : 0;
-    
+
     if (totalHits > 0) {
         const variance = validOffsets.reduce((sum, val) => sum + Math.pow(val - globalAvg, 2), 0) / totalHits;
         globalStdDev = Math.sqrt(variance);
-        
-        if (!isAngle) {
-            const ur = globalStdDev * 10;
-            document.getElementById('statUR').innerText = ur.toFixed(2);
+
+        if (msOffsets.length > 0) {
+            const msMean = msOffsets.reduce((a, b) => a + b, 0) / msOffsets.length;
+            const msVariance = msOffsets.reduce((sum, val) => sum + Math.pow(val - msMean, 2), 0) / msOffsets.length;
+            document.getElementById('statUR').innerText = (Math.sqrt(msVariance) * 10).toFixed(2);
+        } else {
+            document.getElementById('statUR').innerText = '-';
         }
     } else {
         globalStdDev = 0;
@@ -2513,6 +2725,10 @@ document.getElementById('resetZoom').addEventListener('click', () => {
 function clearData() {
     globalOffsets = [];
     globalPlayers = [];
+    globalRawPlayers = [];
+    logIsAngle = false;
+    displayUnit = 'ms';
+    unitAvailability = { ms: true, deg: false };
     activePlayer = 0;
     globalAvg = 0;
     globalStdDev = 0;
@@ -2559,8 +2775,13 @@ function clearData() {
     if (scatterUseHitCheckbox) scatterUseHitCheckbox.checked = false;
     const scatterShowBandsCheckbox = document.getElementById('scatterShowBandsCheckbox');
     if (scatterShowBandsCheckbox) scatterShowBandsCheckbox.checked = true;
+    const scatterDynamicBandsCheckbox = document.getElementById('scatterDynamicBandsCheckbox');
+    if (scatterDynamicBandsCheckbox) scatterDynamicBandsCheckbox.checked = false;
+    const scatterShowHitDetailsCheckbox = document.getElementById('scatterShowHitDetailsCheckbox');
+    if (scatterShowHitDetailsCheckbox) scatterShowHitDetailsCheckbox.checked = false;
+    syncDynamicBandsVisibility();
     const xaccUseHitCheckbox = document.getElementById('xaccUseHitCheckbox');
-    if (xaccUseHitCheckbox) xaccUseHitCheckbox.checked = false;
+    if (xaccUseHitCheckbox) xaccUseHitCheckbox.checked = true;
     const comboUseHitCheckbox = document.getElementById('comboUseHitCheckbox');
     if (comboUseHitCheckbox) comboUseHitCheckbox.checked = false;
     const rollingUseHitCheckbox = document.getElementById('rollingUseHitCheckbox');
@@ -2619,17 +2840,53 @@ function updateAllCharts() {
     });
 }
 
+// A tuple column that may be absent (older logs) or null (the JSON writer's
+// "unknown"), read as a number. NaN counts as unknown too: binary logs store
+// missing hit context as float NaN.
+function optionalTupleNumber(item, index) {
+    if (item.length <= index || item[index] == null) return null;
+    const number = Number(item[index]);
+    return Number.isFinite(number) ? number : null;
+}
+
+// Angle in degrees <-> timing in milliseconds. The log stores one or the other
+// depending on its isAngle flag; the BPM has to be the floor's at the moment of
+// the hit (already multiplied by speed and pitch), which is why a per-hit BPM
+// is what makes the two units interchangeable.
+function angleToMs(angleDeg, bpm) {
+    return angleDeg * 60000 / (180 * bpm);
+}
+
+function msToAngle(offsetMs, bpm) {
+    return offsetMs * 180 * bpm / 60000;
+}
+
+// True when all three factors of an effective BPM are usable. The writer emits
+// them together, and when any is missing the whole context is unknown.
+function hasUsableHitParams(bpm, speed, pitch) {
+    return bpm > 0 && speed > 0 && pitch > 0;
+}
+
 // Raw parse tuples to records, `timeFirst` telling which column is which: logs
 // from binary v5 and JSON v6 on lead with the song time, everything older --
 // and CRPL2 -- carries the offset alone.
-function processOffsetRecords(offsets, timeFirst) {
+//
+// options.isAngle  the log stores degrees rather than milliseconds
+// options.unit     which one the VALUE column should carry: 'ms' or 'deg'
+//
+// Both are derivable once the v8/v9 hit context exists; without it only the
+// log's native unit is available, and the other column stays null.
+function processOffsetRecords(offsets, timeFirst, options = {}) {
+    const isAngle = options.isAngle === true;
+    const unit = options.unit === 'deg' ? 'deg' : 'ms';
+
     return offsets.map((item, index) => {
         const timeMs = timeFirst && item[0] != null ? Number(item[0]) : null;
         const valueIndex = timeFirst ? 1 : 0;
         const rawIndex = timeFirst ? 2 : 1;
         const judgeIndex = timeFirst ? 3 : 2;
         const xpIndex = timeFirst ? 4 : 3;
-        const value = Number(item[valueIndex]);
+        const native = Number(item[valueIndex]);
         const rawCode = item.length > rawIndex && item[rawIndex] != null ? Number(item[rawIndex]) : null;
         const hasJudgeCode = item.length > judgeIndex && item[judgeIndex] != null;
         const judgeCode = hasJudgeCode ? Number(item[judgeIndex]) : normalizeLegacyJudgeCode(rawCode);
@@ -2641,15 +2898,64 @@ function processOffsetRecords(offsets, timeFirst) {
         // this, Legacy logs -- which have no native XPerfect judge code -- keep
         // reporting those hits as plain Perfect and the flag is silently ignored.
         const semanticJudge = isXP && isPerfectFamilyCode(judgeCode) ? 4 : judgeCode;
-        return [value, semanticJudge, rawCode, isXP, index, Number.isFinite(timeMs) && timeMs >= 0 ? timeMs : null];
+        // JSON v8 / binary v9 append the hit context after isXPerfect:
+        // angleDeg, hitBpm, hitSpeed, hitPitch, floorId. Older logs stop at
+        // isXPerfect, so every column below is optional.
+        const contextIndex = xpIndex + 1;
+        const contextAngle = optionalTupleNumber(item, contextIndex);
+        const hitBpm = optionalTupleNumber(item, contextIndex + 1);
+        const hitSpeed = optionalTupleNumber(item, contextIndex + 2);
+        const hitPitch = optionalTupleNumber(item, contextIndex + 3);
+        const floorId = optionalTupleNumber(item, contextIndex + 4);
+
+        const paramsValid = hasUsableHitParams(hitBpm, hitSpeed, hitPitch);
+        const effectiveBpm = paramsValid ? hitBpm * hitSpeed * hitPitch : null;
+
+        // The native angle: for angle logs the stored value already is one (and
+        // is the more precise copy); for timing logs it comes from the context.
+        let angleDeg = isAngle && Number.isFinite(native) ? native : contextAngle;
+        let offsetMs = !isAngle && Number.isFinite(native) ? native : null;
+
+        if (angleDeg !== null && offsetMs === null && effectiveBpm !== null) {
+            offsetMs = angleToMs(angleDeg, effectiveBpm);
+        }
+        if (offsetMs !== null && angleDeg === null && effectiveBpm !== null) {
+            angleDeg = msToAngle(offsetMs, effectiveBpm);
+        }
+
+        let value = native;
+        if (unit === 'ms' && offsetMs !== null) value = offsetMs;
+        else if (unit === 'deg' && angleDeg !== null) value = angleDeg;
+
+        return [
+            value,
+            semanticJudge,
+            rawCode,
+            isXP,
+            index,
+            Number.isFinite(timeMs) && timeMs >= 0 ? timeMs : null,
+            angleDeg,
+            hitBpm,
+            hitSpeed,
+            hitPitch,
+            floorId === null ? -1 : floorId,
+            offsetMs,
+            native
+        ];
     });
 }
 
 // Named columns of a record, so analysis code reads as data instead of as array
 // arithmetic. A record is built in processOffsetRecords() above and every
 // column is always present, so REC.INDEX and REC.TIME are safe to compare
-// against without a length check.
-const REC = { VALUE: 0, JUDGE: 1, RAW: 2, XP: 3, INDEX: 4, TIME: 5 };
+// against without a length check. ANGLE..FLOOR are the v8/v9 hit context and
+// are null (floor -1) when the log predates it; MS and NATIVE are derived, and
+// MS is null when the angle cannot be converted (no per-hit BPM).
+const REC = {
+    VALUE: 0, JUDGE: 1, RAW: 2, XP: 3, INDEX: 4, TIME: 5,
+    ANGLE: 6, BPM: 7, SPEED: 8, PITCH: 9, FLOOR: 10,
+    MS: 11, NATIVE: 12
+};
 
 // ---------------------------------------------------------------------------
 // Active selection
@@ -2940,9 +3246,12 @@ function parseV2(view, offset) {
 // they are the writer's history of the previous record's bit pattern, and a v8
 // stream does not restart them per player. `hasPlayerId` is the v8 byte that
 // leads each record; without it (v5..v7) every record is player 0's.
+// `hasHitContext` is the v9 tail -- four float32 fields plus a floor-id varint
+// -- that must be consumed in step or the next record starts at the wrong byte.
 function parseBinaryRecords(view, offset, options) {
     const compactXor = options.compactXor;
     const hasPlayerId = options.hasPlayerId;
+    const hasHitContext = options.hasHitContext;
     const dv = new DataView(view.buffer, view.byteOffset);
     const streams = [];
     let prevTimeBits = 0n;
@@ -2951,6 +3260,13 @@ function parseBinaryRecords(view, offset, options) {
     const readByte = () => {
         if (offset >= view.byteLength) throw TRUNCATED;
         return view[offset++];
+    };
+
+    const readFloat32 = () => {
+        if (offset + 4 > view.byteLength) throw TRUNCATED;
+        const value = dv.getFloat32(offset, true);
+        offset += 4;
+        return value;
     };
 
     const readZigZagVarInt = () => {
@@ -3013,12 +3329,28 @@ function parseBinaryRecords(view, offset, options) {
             const rawMarginCode = readZigZagVarInt();
             const judgeCode = readZigZagVarInt();
             const isXP = readByte() !== 0;
+
+            // v9 appends the hit context: angle, the floor's BPM/speed/pitch at
+            // the moment of the hit, and the floor id. The tuple keeps the JSON
+            // v8 column order so both loaders hand processOffsetRecords() the
+            // same shape. Missing context is written as float NaN / -1.
+            const angleDeg = hasHitContext ? readFloat32() : NaN;
+            const hitBpm = hasHitContext ? readFloat32() : NaN;
+            const hitSpeed = hasHitContext ? readFloat32() : NaN;
+            const hitPitch = hasHitContext ? readFloat32() : NaN;
+            const floorId = hasHitContext ? readZigZagVarInt() : -1;
+
             streamFor(playerId).push([
                 Math.round(timeMs * 1000) / 1000,
                 Math.round(value * 10000) / 10000,
                 rawMarginCode,
                 judgeCode,
-                isXP
+                isXP,
+                angleDeg,
+                hitBpm,
+                hitSpeed,
+                hitPitch,
+                floorId
             ]);
         }
     } catch (err) {
@@ -3076,9 +3408,14 @@ function parseTlogData(decompressed) {
             declaredPlayers = declared > 0 ? declared : 1;
         }
 
+        // v9 appends the per-hit context (angle, hit BPM/speed/pitch, floor id)
+        // to every record. It has to be consumed here even though no chart reads
+        // it: otherwise those bytes become the next record's player id and the
+        // whole stream misaligns.
         const records = parseBinaryRecords(view, offset, {
             compactXor: version >= 7,
-            hasPlayerId: version >= 8
+            hasPlayerId: version >= 8,
+            hasHitContext: version >= 9
         });
         truncated = records.truncated;
 
@@ -3229,9 +3566,10 @@ function repairTruncatedJson(text) {
     return text.slice(0, lastEnd) + lastOpen.reverse().join('');
 }
 
-// Reads a TimingShow JSON log: v7 (`offsets_1..N`, one array per player) and the
-// older single-player layouts alike. Returns null when the file holds no
-// offsets at all, which is what "not one of ours" looks like.
+// Reads a TimingShow JSON log: v8 (`offsets_1..N`, one array per player, ten
+// columns per hit), v7 (same keys, five columns) and the older single-player
+// layouts alike. Returns null when the file holds no offsets at all, which is
+// what "not one of ours" looks like.
 function readJsonLog(text) {
     const source = text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
     let parsed;
@@ -3258,8 +3596,10 @@ function readJsonLog(text) {
         if (key !== 'offsets') sawNumberedKey = true;
 
         if (Array.isArray(value)) {
-            // v7 entries are [timeMs, value, raw, judge, isXPerfect]; v5 logs
-            // kept the same tuple, and from v6 on it leads with the song time.
+            // v7 entries are [timeMs, value, raw, judge, isXPerfect] and v8
+            // appends [angle, bpm, speed, pitch, floorId]; v5 logs kept the
+            // same five, and from v6 on the tuple leads with the song time.
+            // Extra columns are read by processOffsetRecords(), not here.
             const timeFirst = key !== 'offsets' || Number(parsed.formatVersion) >= 6;
             players[playerId] = { tuples: value, timeFirst };
         } else if (isLegacyOffsetsObject(value)) {
@@ -3395,19 +3735,30 @@ async function LoadFile(file) {
             if (gzipTruncated) data.truncated = true;
         }
 
-        // The records of every player, built once here. processOffsetRecords
-        // numbers the hits of the stream it is given, so the pass has to run per
-        // player: a shared pass would carry the hit axis across players and make
-        // the second player's first hit look like a continuation of the first's.
-        // At least one slot even when the file names none: a log cut off before
-        // the first player array is still worth showing -- its header, and the
-        // note that it was truncated -- and the panel is driven by there being
-        // a log at all rather than by records existing.
+        // The raw streams are kept so the records can be rebuilt in the other
+        // unit. processOffsetRecords numbers the hits of the stream it is given,
+        // so the pass has to run per player: a shared pass would carry the hit
+        // axis across players and make the second player's first hit look like a
+        // continuation of the first's. At least one slot even when the file
+        // names none: a log cut off before the first player array is still worth
+        // showing -- its header, and the note that it was truncated -- and the
+        // panel is driven by there being a log at all rather than by records
+        // existing.
         const slotCount = Math.max(data.playerCount, 1);
-        globalPlayers = [];
+        globalRawPlayers = [];
         for (let id = 0; id < slotCount; id++) {
-            const stream = data.players[id];
-            globalPlayers.push(stream ? processOffsetRecords(stream.tuples, stream.timeFirst) : []);
+            globalRawPlayers.push(data.players[id] || null);
+        }
+        logIsAngle = data.header.isAngle === true;
+
+        // Logs start in their native unit. The other one is offered only when
+        // every hit can be converted; see computeUnitAvailability().
+        displayUnit = logIsAngle ? 'deg' : 'ms';
+        globalPlayers = buildPlayerRecords(displayUnit);
+        unitAvailability = computeUnitAvailability(globalPlayers);
+        if (!unitAvailability[displayUnit]) {
+            displayUnit = displayUnit === 'ms' ? 'deg' : 'ms';
+            globalPlayers = buildPlayerRecords(displayUnit);
         }
         activePlayer = 0;
         globalOffsets = globalPlayers[0];
@@ -3490,9 +3841,25 @@ document.getElementById('scatterUseHitCheckbox')?.addEventListener('change', () 
     renderScatterChart();
 });
 
+// The dynamic-band switch only means something while the bands themselves are
+// drawn, so it is hidden with them.
+function syncDynamicBandsVisibility() {
+    const showBands = document.getElementById('scatterShowBandsCheckbox');
+    const label = document.getElementById('dynamicBandsLabel');
+    if (!label) return;
+    label.style.display = showBands && showBands.checked ? 'flex' : 'none';
+}
+
 document.getElementById('scatterShowBandsCheckbox')?.addEventListener('change', () => {
+    syncDynamicBandsVisibility();
     renderScatterChart();
 });
+
+document.getElementById('scatterDynamicBandsCheckbox')?.addEventListener('change', () => {
+    renderScatterChart();
+});
+
+syncDynamicBandsVisibility();
 
 document.getElementById('pointSizeSlider')?.addEventListener('input', (e) => {
     pointSize = parseInt(e.target.value, 10) || 1;
@@ -3599,6 +3966,10 @@ document.getElementById('jsonFile').addEventListener('change', function(e) {
 
 document.getElementById('langSelect').addEventListener('change', function(e) {
     setLanguage(e.target.value);
+});
+
+document.getElementById('unitSelect')?.addEventListener('change', function(e) {
+    setDisplayUnit(e.target.value);
 });
 
 document.getElementById('toggleXPerfectRatio').addEventListener('change', () => {
