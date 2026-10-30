@@ -28,9 +28,10 @@
         <a href="#" id="selectLink">select a file</a>
     </p>
     <p class="hint">
-        The binary log is rewritten as a TimingShow JSON v7 log: one
+        The binary log is rewritten as a TimingShow JSON v8 log: one
         <code>offsets_&lt;N&gt;</code> array per player, so co-op logs keep each
-        player's hits apart.
+        player's hits apart, with the per-hit angle / BPM / speed / pitch / floor
+        context preserved when the source has it.
     </p>
     <input type="file" id="fileInput" accept=".tlog,.tlog.gz,.gz" style="display:none">
     <div id="status"></div>
@@ -126,10 +127,13 @@
 
     // Records of a v5+ stream, grouped by player. The XOR chains run across the
     // whole file, including across players -- they are the writer's history of
-    // the previous record, not a per-player one.
+    // the previous record, not a per-player one. v9 appends four float32 fields
+    // and a floor-id varint after isXPerfect; they must be consumed even when
+    // the converted log would not use them, or every following record misaligns.
     function parseBinaryRecords(view, offset, options) {
         const compactXor = options.compactXor;
         const hasPlayerId = options.hasPlayerId;
+        const hasHitContext = options.hasHitContext;
         const dv = new DataView(view.buffer, view.byteOffset);
         const streams = [];
         let prevTimeBits = 0n;
@@ -138,6 +142,13 @@
         const readByte = () => {
             if (offset >= view.byteLength) throw TRUNCATED;
             return view[offset++];
+        };
+
+        const readFloat32 = () => {
+            if (offset + 4 > view.byteLength) throw TRUNCATED;
+            const value = dv.getFloat32(offset, true);
+            offset += 4;
+            return value;
         };
 
         const readZigZagVarInt = () => {
@@ -199,15 +210,30 @@
                 const judgeCode = readZigZagVarInt();
                 const isXP = readByte() !== 0;
 
-                // Fixed columns per player. v7 spells them as
-                // [timeMs, value, rawMarginCode, judgeCode, isXPerfect] with
-                // song time first, so every stream leaves here that way.
+                // v9 tail: angleDeg, hitBpm, hitSpeed, hitPitch (float32 each)
+                // and floorId (varint). Older sources have none.
+                const angleDeg = hasHitContext ? readFloat32() : NaN;
+                const hitBpm = hasHitContext ? readFloat32() : NaN;
+                const hitSpeed = hasHitContext ? readFloat32() : NaN;
+                const hitPitch = hasHitContext ? readFloat32() : NaN;
+                const floorId = hasHitContext ? readZigZagVarInt() : -1;
+
+                // Fixed columns per player, in the JSON v8 order:
+                // [timeMs, value, rawMarginCode, judgeCode, isXPerfect,
+                //  angleDeg, hitBpm, hitSpeed, hitPitch, floorId].
+                // JSON.stringify turns NaN into null, which is how the writer
+                // spells unknown context.
                 streamFor(playerId).push([
                     Math.round(timeMs * 1000) / 1000,
                     value,
                     rawMarginCode,
                     judgeCode,
-                    isXP ? 1 : 0
+                    isXP ? 1 : 0,
+                    angleDeg,
+                    hitBpm,
+                    hitSpeed,
+                    hitPitch,
+                    floorId
                 ]);
             }
         } catch (err) {
@@ -259,6 +285,8 @@
 
             // v8 counts the players in the header and names the player at the
             // start of every record; v5..v7 are single-player and do neither.
+            // v9 appends the per-hit context, so the record reader has to know
+            // to consume it.
             let declaredPlayers = 1;
             if (version >= 8) {
                 const declared = view[offset++];
@@ -267,7 +295,8 @@
 
             const records = parseBinaryRecords(view, offset, {
                 compactXor: version >= 7,
-                hasPlayerId: version >= 8
+                hasPlayerId: version >= 8,
+                hasHitContext: version >= 9
             });
             truncated = records.truncated;
 
@@ -282,13 +311,14 @@
             truncated = records.truncated;
             // No song time and no judge code in these logs: the first column is
             // the offset itself, and the margin code is all the judgment there
-            // is. Song time is written as null (which v7 allows) and the judge
-            // column is left null so readers fall back to the margin code.
-            players = [records.tuples.map(tuple => [null, tuple[0], tuple[1], null, 0])];
+            // is. Song time is written as null (which v8 allows) and the judge
+            // column is left null so readers fall back to the margin code. The
+            // five hit-context columns are unknown, hence null / -1.
+            players = [records.tuples.map(tuple => [null, tuple[0], tuple[1], null, 0, null, null, null, null, -1])];
         } else if (version >= 2 && version < 5) {
             const records = parseV2(view, offset);
             truncated = records.truncated;
-            players = [records.tuples.map(tuple => [null, tuple[0], tuple[1], null, 0])];
+            players = [records.tuples.map(tuple => [null, tuple[0], tuple[1], null, 0, null, null, null, null, -1])];
         } else {
             throw new Error(`Unsupported version: ${version}`);
         }
@@ -342,9 +372,9 @@
         return { bytes: inflated, truncated: true };
     }
 
-    // The converted file is a TimingShow JSON v7 log, whose current format
-    // version is 7 whatever the binary it came from was called.
-    const JSON_FORMAT_VERSION = 7;
+    // The converted file is a TimingShow JSON v8 log, whose current format
+    // version is 8 whatever the binary it came from was called.
+    const JSON_FORMAT_VERSION = 8;
 
     function toJsonLog(result) {
         const log = {

@@ -185,6 +185,21 @@ padding: 5px 10px;
 font-size: 0.85rem;
 max-width: 100%;
 }
+/* Unit switch (ms / degrees) next to the metadata toggle. */
+.unit-control {
+display: inline-flex;
+align-items: center;
+gap: 8px;
+margin-top: 8px;
+margin-left: 10px;
+}
+.unit-control label {
+font-size: 0.85rem;
+}
+.unit-control .lang-select {
+padding: 4px 10px;
+font-size: 0.85rem;
+}
 .meta-warning {
 margin-top: 6px;
 color: var(--warning-color);

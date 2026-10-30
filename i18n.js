@@ -44,12 +44,15 @@ const I18N_STRINGS = {
         rangeFilter: '范围筛选:',
         reset: '重置', useHitAxis: '使用 Hit 作为横轴',
         ignoreOutliers: '忽略离群点',
-        showJudgeBands: '显示判定色带',
+        showJudgeBands: '显示判定色带', dynamicJudgeBands: '动态判定色带', showHitDetails: '显示击打详情',
         pointSize: '点大小',
         ignoredCount: '已隐藏 {count} 个点',
         inRangeCount: '范围内 {count} 个点',
         axisClipped: '轴已裁剪至 {min} ~ {max}{unit}（{count} 个点超出范围）',
-        autoImportFailed: '自动导入日志失败'
+        autoImportFailed: '自动导入日志失败',
+        valueUnit: '数值单位',
+        contextCoverage: '命中上下文', contextNone: '无（旧日志）',
+        floorLabel: '地板', angleLabel: '角度', offsetMsLabel: '毫秒偏差'
     },
     en: {
         importFile: 'Import File', resetZoom: 'Reset Zoom', clear: 'Clear',
@@ -96,12 +99,15 @@ const I18N_STRINGS = {
         rangeFilter: 'Range Filter:',
         reset: 'Reset', useHitAxis: 'Use Hit as X-axis',
         ignoreOutliers: 'Ignore Outliers',
-        showJudgeBands: 'Show Judgment Bands',
+        showJudgeBands: 'Show Judgment Bands', dynamicJudgeBands: 'Dynamic judgment bands', showHitDetails: 'Show hit details',
         pointSize: 'Point Size',
         ignoredCount: 'Ignored {count} pts',
         inRangeCount: '{count} pts in range',
         axisClipped: 'Axis cropped to {min} ~ {max}{unit} ({count} pts out of range)',
-        autoImportFailed: 'Automatic log import failed'
+        autoImportFailed: 'Automatic log import failed',
+        valueUnit: 'Value unit',
+        contextCoverage: 'Hit context', contextNone: 'none (older log)',
+        floorLabel: 'Floor', angleLabel: 'Angle', offsetMsLabel: 'Offset (ms)'
     },
     kr: {
         importFile: '파일 가져오기', resetZoom: '줌 초기화', clear: '비우기',
@@ -148,11 +154,14 @@ const I18N_STRINGS = {
         rangeFilter: '범위 필터:',
         reset: '초기화', useHitAxis: 'Hit을 X축으로 사용',
         ignoreOutliers: '이상치 무시',
-        showJudgeBands: '판정 색띠 표시',
+        showJudgeBands: '판정 색띠 표시', dynamicJudgeBands: '동적 판정 색띠', showHitDetails: '히트 상세 표시',
         pointSize: '점 크기',
         ignoredCount: '{count}개 숨김',
         inRangeCount: '범위 내 {count}개',
         axisClipped: '축이 {min} ~ {max}{unit}(으)로 잘림 ({count}개 범위 밖)',
-        autoImportFailed: '로그 자동 가져오기 실패'
+        autoImportFailed: '로그 자동 가져오기 실패',
+        valueUnit: '값 단위',
+        contextCoverage: '히트 컨텍스트', contextNone: '없음 (이전 로그)',
+        floorLabel: '바닥', angleLabel: '각도', offsetMsLabel: '오프셋 (ms)'
     }
 };

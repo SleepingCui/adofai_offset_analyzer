@@ -34,6 +34,13 @@
         <div id="metaInfo">
             <div id="metaSummary" data-i18n="waitingImport">等待导入...</div>
             <button id="metaToggle" type="button" disabled aria-expanded="false" data-i18n="showDetails">显示详细信息</button>
+            <div id="unitControl" class="unit-control" hidden>
+                <label for="unitSelect" data-i18n="valueUnit">数值单位</label>
+                <select id="unitSelect" class="lang-select">
+                    <option value="ms">ms</option>
+                    <option value="deg">°</option>
+                </select>
+            </div>
             <div id="metaDetails" hidden></div>
         </div>
     </div>
@@ -92,6 +99,14 @@
                         <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
                             <input type="checkbox" id="scatterShowBandsCheckbox" checked style="cursor: pointer; accent-color: var(--accent-color);">
                             <span data-i18n="showJudgeBands">显示判定色带</span>
+                        </label>
+                        <label id="dynamicBandsLabel" style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                            <input type="checkbox" id="scatterDynamicBandsCheckbox" style="cursor: pointer; accent-color: var(--accent-color);">
+                            <span data-i18n="dynamicJudgeBands">动态判定色带</span>
+                        </label>
+                        <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                            <input type="checkbox" id="scatterShowHitDetailsCheckbox" style="cursor: pointer; accent-color: var(--accent-color);">
+                            <span data-i18n="showHitDetails">显示击打详情</span>
                         </label>
                         <label class="range-control">
                             <span data-i18n="pointSize">点大小</span>
@@ -197,7 +212,7 @@
             <div class="chart-wrapper">
                 <div class="xacc-filter-container" id="xaccFilterContainer" style="display: none;">
                     <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
-                        <input type="checkbox" id="xaccUseHitCheckbox" style="cursor: pointer; accent-color: var(--accent-color);">
+                        <input type="checkbox" id="xaccUseHitCheckbox" checked style="cursor: pointer; accent-color: var(--accent-color);">
                         <span data-i18n="useHitAxis">使用 Hit 作为横轴</span>
                     </label>
                 </div>
@@ -223,6 +238,7 @@
                 <div class="combo-legend" id="comboLegend"></div>
             </div>
         </div>
+
     </div>
 
     <div class="tip">
