@@ -108,6 +108,10 @@
                             <input type="checkbox" id="scatterShowHitDetailsCheckbox" style="cursor: pointer; accent-color: var(--accent-color);">
                             <span data-i18n="showHitDetails">显示击打详情</span>
                         </label>
+                        <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                            <input type="checkbox" id="scatterBpmMarksCheckbox" style="cursor: pointer; accent-color: var(--accent-color);">
+                            <span data-i18n="bpmMarks">标记 BPM 变化</span>
+                        </label>
                         <label class="range-control">
                             <span data-i18n="pointSize">点大小</span>
                             <input type="range" id="pointSizeSlider" min="1" max="10" step="1" value="3">
@@ -142,6 +146,10 @@
                         <input type="checkbox" id="rollingUseHitCheckbox" style="cursor: pointer; accent-color: var(--accent-color);">
                         <span data-i18n="useHitAxis">使用 Hit 作为横轴</span>
                     </label>
+                    <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                        <input type="checkbox" id="rollingBpmMarksCheckbox" style="cursor: pointer; accent-color: var(--accent-color);">
+                        <span data-i18n="bpmMarks">标记 BPM 变化</span>
+                    </label>
                     <label class="range-control">
                         <span data-i18n="rollingWindow">窗口 (键)</span>
                         <input type="range" id="rollingWindowSlider" min="5" max="500" step="5" value="50">
@@ -150,6 +158,46 @@
                 </div>
                 <div class="chart-canvas-box">
                     <canvas id="rollingChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-section" id="sectionBpm" hidden>
+            <h3 data-i18n="bpmTitle">BPM 曲线图</h3>
+            <div class="stat-tiles" id="bpmStats"></div>
+            <div class="chart-wrapper">
+                <div class="bpm-filter-container" id="bpmFilterContainer" style="display: none;">
+                    <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                        <input type="checkbox" id="bpmUseHitCheckbox" style="cursor: pointer; accent-color: var(--accent-color);">
+                        <span data-i18n="useHitAxis">使用 Hit 作为横轴</span>
+                    </label>
+                    <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                        <input type="checkbox" id="bpmRawCheckbox" style="cursor: pointer; accent-color: var(--accent-color);">
+                        <span data-i18n="bpmRaw">原始 BPM</span>
+                    </label>
+                    <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                        <input type="checkbox" id="bpmSpeedCheckbox" style="cursor: pointer; accent-color: var(--accent-color);">
+                        <span data-i18n="speed">速度</span>
+                    </label>
+                    <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                        <input type="checkbox" id="bpmPitchCheckbox" style="cursor: pointer; accent-color: var(--accent-color);">
+                        <span data-i18n="pitch">音高</span>
+                    </label>
+                </div>
+                <div class="chart-canvas-box">
+                    <canvas id="bpmChart"></canvas>
+                </div>
+            </div>
+            <div class="bpm-segments" id="bpmSegments"></div>
+        </div>
+
+        <div class="chart-section" id="sectionFloor" hidden>
+            <h3 data-i18n="floorTitle">地板 / 多押分析</h3>
+            <div class="stat-tiles" id="floorStats"></div>
+            <div class="chart-wrapper">
+                <div class="axis-crop-badge" id="floorNote"></div>
+                <div class="chart-canvas-box">
+                    <canvas id="floorChart"></canvas>
                 </div>
             </div>
         </div>
