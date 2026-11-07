@@ -375,7 +375,8 @@ left: 0;
 .scatter-filter-container,
 .xacc-filter-container,
 .combo-filter-container,
-.rolling-filter-container {
+.rolling-filter-container,
+.bpm-filter-container {
 display: flex;
 align-items: center;
 justify-content: space-between;
@@ -518,6 +519,47 @@ letter-spacing: 0.05em;
 font-size: 1.05rem;
 font-weight: 700;
 color: #ffffff;
+}
+
+/* One row per BPM stretch under the BPM curve. The table scrolls instead of
+stretching the section, and the header stays put while it does. */
+.bpm-segments {
+margin-top: 12px;
+max-height: 320px;
+overflow: auto;
+border: 1px solid var(--hairline);
+border-radius: var(--radius-sm);
+background: var(--chart-surface);
+}
+.bpm-segments table {
+width: 100%;
+border-collapse: collapse;
+font-size: 0.8rem;
+}
+.bpm-segments th,
+.bpm-segments td {
+padding: 6px 10px;
+border-bottom: 1px solid var(--hairline);
+text-align: right;
+white-space: nowrap;
+}
+.bpm-segments th {
+position: sticky;
+top: 0;
+background: var(--card-color);
+color: var(--text-muted);
+font-weight: 600;
+}
+.bpm-segments th:first-child,
+.bpm-segments td:first-child {
+text-align: left;
+}
+.bpm-segments td.bias-early { color: var(--warning-color); }
+.bpm-segments td.bias-late { color: var(--link-color); }
+.bpm-segments-note {
+padding: 8px 10px;
+font-size: 0.78rem;
+color: var(--text-muted);
 }
 
 /* The streak strip is a single row of blocks, so it does not need the height a
@@ -743,7 +785,8 @@ text-align: left;
 .scatter-filter-container,
 .xacc-filter-container,
 .combo-filter-container,
-.rolling-filter-container {
+.rolling-filter-container,
+.bpm-filter-container {
 justify-content: center;
 }
 .chart-config {
