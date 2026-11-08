@@ -376,7 +376,8 @@ left: 0;
 .xacc-filter-container,
 .combo-filter-container,
 .rolling-filter-container,
-.bpm-filter-container {
+.bpm-filter-container,
+.heatmap-filter-container {
 display: flex;
 align-items: center;
 justify-content: space-between;
@@ -441,6 +442,37 @@ padding: 2px 8px;
 border-radius: 4px;
 display: none;
 font-weight: 500;
+}
+
+/* Density legend: a ramp strip the eye can hold against the cells, labelled at
+   its ends rather than ticked -- the exact count is in each cell's tooltip. */
+.heatmap-scale {
+display: flex;
+align-items: center;
+gap: 8px;
+color: var(--text-muted);
+font-size: 0.78rem;
+}
+
+.heatmap-scale-bar {
+width: 120px;
+height: 10px;
+border-radius: 5px;
+border: 1px solid var(--card-border);
+}
+
+.heatmap-scale-label {
+white-space: nowrap;
+}
+
+.heatmap-select {
+background: #1e1e1e;
+border: 1px solid var(--card-border);
+color: #fff;
+padding: 5px 8px;
+border-radius: var(--radius-sm);
+font-size: 0.85rem;
+cursor: pointer;
 }
 
 .range-inputs {
@@ -786,7 +818,8 @@ text-align: left;
 .xacc-filter-container,
 .combo-filter-container,
 .rolling-filter-container,
-.bpm-filter-container {
+.bpm-filter-container,
+.heatmap-filter-container {
 justify-content: center;
 }
 .chart-config {

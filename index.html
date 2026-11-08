@@ -137,6 +137,32 @@
             </div>
         </div>
 
+        <div class="chart-section" id="sectionHeatmap" hidden>
+            <h3 data-i18n="heatmapTitle">偏移量密度热力图</h3>
+            <div class="stat-tiles" id="heatmapStats"></div>
+            <div class="chart-wrapper">
+                <div class="heatmap-filter-container" id="heatmapFilterContainer" style="display: none;">
+                    <label class="range-control">
+                        <span data-i18n="heatmapYAxis">纵轴</span>
+                        <select id="heatmapYSelect" class="heatmap-select">
+                            <option value="previous" data-i18n="heatmapYPrevious">上一键偏移量</option>
+                            <option value="delta" data-i18n="heatmapYDelta">与上一键的差值</option>
+                            <option value="absDelta" data-i18n="heatmapYAbsDelta">与上一键差值的大小</option>
+                        </select>
+                    </label>
+                    <div class="heatmap-scale">
+                        <span class="heatmap-scale-label" data-i18n="heatmapFew">少</span>
+                        <div class="heatmap-scale-bar" id="heatmapScaleBar"></div>
+                        <span class="heatmap-scale-label" data-i18n="heatmapMany">多</span>
+                    </div>
+                </div>
+                <div class="axis-crop-badge" id="heatmapAxisCropBadge"></div>
+                <div class="chart-canvas-box">
+                    <canvas id="heatmapChart"></canvas>
+                </div>
+            </div>
+        </div>
+
         <div class="chart-section" id="sectionRolling" hidden>
             <h3 data-i18n="rollingTitle">滑动均值与波动带</h3>
             <div class="stat-tiles" id="rollingStats"></div>
