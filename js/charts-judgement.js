@@ -111,28 +111,25 @@ function renderXaccChart() {
     const filterContainer = document.getElementById('xaccFilterContainer');
     if (filterContainer) filterContainer.style.display = 'flex';
 
+    // Only hits that carry a weight get a point. Midspin (and any other
+    // judgment getXaccWeight() has no weight for) has no accuracy to contribute,
+    // so plotting a null there would cut the running line for a hit that cannot
+    // move it: the curve simply steps over such a hit.
+    const xaccLabels = [];
     const xaccData = [];
     let runningWeightedSum = 0;
     let runningCount = 0;
-    const validTypes = DISPLAY_ORDER;
     const useHitAxis = document.getElementById('xaccUseHitCheckbox')?.checked === true;
     const useTimeline = !useHitAxis && hasTimelineData();
 
-    globalOffsets.forEach((item) => {
-        const type = item[1];
-        if (validTypes.includes(type)) {
-            const weight = getXaccWeight(type);
-            if (weight === null) {
-                xaccData.push(null);
-                return;
-            }
-            
-            runningWeightedSum += weight;
-            runningCount++;
-            xaccData.push((runningWeightedSum / runningCount) * 100);
-        } else {
-            xaccData.push(null);
-        }
+    globalOffsets.forEach((item, index) => {
+        const weight = getXaccWeight(item[1]);
+        if (weight === null) return;
+
+        runningWeightedSum += weight;
+        runningCount++;
+        xaccLabels.push(getChartX(item, index, useHitAxis));
+        xaccData.push((runningWeightedSum / runningCount) * 100);
     });
 
     const ctx = document.getElementById('xaccChart').getContext('2d');
@@ -140,7 +137,7 @@ function renderXaccChart() {
     xaccChart = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: globalOffsets.map((item, i) => getChartX(item, i, useHitAxis)),
+            labels: xaccLabels,
             datasets: [{
                 label: 'XACC (%)',
                 data: xaccData,

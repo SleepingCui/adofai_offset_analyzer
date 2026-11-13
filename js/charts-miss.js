@@ -12,10 +12,16 @@
 
 // Everything outside the core Perfect window. EarlyPerfect / LatePerfect are
 // included on purpose: they are the outer perfect ring, and the player wants
-// them visible here. Perfect, PerfectPlus, XPerfect and Auto stay off the strip.
-const MISS_PERFECT_CODES = new Set([3, 4, 5, 12]);
+// them visible here. Perfect, PerfectPlus and XPerfect stay off the strip.
+//
+// Auto and Midspin stay off too: the player never timed either one -- Auto is
+// autoplay, Midspin is the forced hit a midspin tile hands out -- so neither can
+// be a mistake. They are dropped from the miss rate's denominator as well, or a
+// long autoplay stretch would dilute the percentage with hits that could never
+// have been wrong.
+const MISS_IGNORED_CODES = new Set([3, 4, 5, 12, 14]);
 function isMistakeJudgeCode(type) {
-    return !MISS_PERFECT_CODES.has(type);
+    return !MISS_IGNORED_CODES.has(type);
 }
 
 function getMissUseHitBasis() {
@@ -34,7 +40,8 @@ function withAlpha(color, alpha) {
 
 // -> [{ item, index, type, label, color, hitNumber, time, value, position,
 //      ms, angle, floor, bpm, speed, pitch }]
-// One entry per non-perfect hit, with the position already normalised to 0-100.
+// One entry per mistake hit (see isMistakeJudgeCode), with the position already
+// normalised to 0-100.
 // Time is the default basis; a log without timestamps falls back to the hit
 // number, which is the only other ordering the log carries.
 // First and last timestamp of the run. The strip and its axis share this span,
@@ -359,6 +366,11 @@ function renderMissChart() {
 
     const points = buildMissPoints(globalOffsets, useTimeline);
     const totalHits = globalOffsets.length;
+    // The rate is over the hits that could have been a mistake. The tooltip
+    // still reports the full run count, because it names a position in the play
+    // rather than a share of the scoreable hits.
+    const ratedHits = globalOffsets.reduce(
+        (count, item) => count + (isMistakeJudgeCode(item[REC.JUDGE]) ? 1 : 0), 0);
 
     const statsEl = document.getElementById('missStats');
     if (statsEl) {
@@ -368,7 +380,7 @@ function renderMissChart() {
         const meanAbs = valued.length > 0
             ? valued.reduce((sum, value) => sum + Math.abs(value), 0) / valued.length
             : null;
-        const rate = totalHits > 0 ? (points.length / totalHits) * 100 : 0;
+        const rate = ratedHits > 0 ? (points.length / ratedHits) * 100 : 0;
         const meanText = meanAbs === null
             ? '-'
             : meanAbs.toFixed(displayUnit === 'deg' ? 3 : 2) + unit;
