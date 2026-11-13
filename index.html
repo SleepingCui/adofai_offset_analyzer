@@ -382,7 +382,21 @@
 
 <script src="i18n.js"></script>
 <script src="concrpl2.js"></script>
-<script src="app.js"></script>
+<!-- Classic scripts, not modules: the page is also opened straight from disk (file://),
+     where module imports and fetch are blocked. They share one global scope and the
+     order below is the dependency order, so it must not be shuffled. -->
+<script src="js/core.js"></script>
+<script src="js/stats.js"></script>
+<script src="js/charts-timing.js"></script>
+<script src="js/charts-scatter.js"></script>
+<script src="js/charts-judgement.js"></script>
+<script src="js/charts-miss.js"></script>
+<script src="js/charts-rolling.js"></script>
+<script src="js/charts-tempo.js"></script>
+<script src="js/charts-heatmap.js"></script>
+<script src="js/data.js"></script>
+<script src="js/log-parser.js"></script>
+<script src="js/app.js"></script>
 
 </body>
 </html>
