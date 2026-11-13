@@ -260,6 +260,7 @@ async function LoadFile(file) {
             isAngle: data.header.isAngle,
             hitMarginVersion: data.header.hitMarginVersion || null,
             judgeCodeVersion: data.header.judgeCodeVersion || null,
+            difficulty: data.header.difficulty ?? -1,
             playerCount: data.playerCount,
             truncated: data.truncated === true
         };

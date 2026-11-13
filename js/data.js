@@ -68,6 +68,9 @@ function processOffsetRecords(offsets, timeFirst, options = {}) {
         const hitSpeed = optionalTupleNumber(item, contextIndex + 2);
         const hitPitch = optionalTupleNumber(item, contextIndex + 3);
         const floorId = optionalTupleNumber(item, contextIndex + 4);
+        // JSON v11 / binary v11 append the floor's judgment-window multiplier;
+        // older hits stop at the floor id, so this is optional like the rest.
+        const marginScale = optionalTupleNumber(item, contextIndex + 5);
 
         const paramsValid = hasUsableHitParams(hitBpm, hitSpeed, hitPitch);
         const effectiveBpm = paramsValid ? hitBpm * hitSpeed * hitPitch : null;
@@ -101,7 +104,8 @@ function processOffsetRecords(offsets, timeFirst, options = {}) {
             hitPitch,
             floorId === null ? -1 : floorId,
             offsetMs,
-            native
+            native,
+            marginScale
         ];
     });
 }
@@ -109,14 +113,44 @@ function processOffsetRecords(offsets, timeFirst, options = {}) {
 // Named columns of a record, so analysis code reads as data instead of as array
 // arithmetic. A record is built in processOffsetRecords() above and every
 // column is always present, so REC.INDEX and REC.TIME are safe to compare
-// against without a length check. ANGLE..FLOOR are the v8/v9 hit context and
-// are null (floor -1) when the log predates it; MS and NATIVE are derived, and
-// MS is null when the angle cannot be converted (no per-hit BPM).
+// against without a length check. ANGLE..MARGIN are the v8/v9/v11 hit context
+// and are null (floor -1) when the log predates it; MS and NATIVE are derived,
+// and MS is null when the angle cannot be converted (no per-hit BPM).
 const REC = {
     VALUE: 0, JUDGE: 1, RAW: 2, XP: 3, INDEX: 4, TIME: 5,
     ANGLE: 6, BPM: 7, SPEED: 8, PITCH: 9, FLOOR: 10,
-    MS: 11, NATIVE: 12
+    MS: 11, NATIVE: 12, MARGIN: 13
 };
+
+// The multiplier the game applied to this floor's judgment windows. A log that
+// predates the column, and a hit the writer stored without a usable value, both
+// mean the untouched window: 1x.
+function recordMarginScale(item) {
+    const scale = item[REC.MARGIN];
+    return Number.isFinite(scale) && scale > 0 ? scale : 1;
+}
+
+// The margin scale the run used most, for the places that describe a whole log
+// in one number -- the metadata panel and the unsegmented judgment bands. Logs
+// that never touch the scale resolve to 1 by construction.
+function dominantMarginScale(records) {
+    const counts = new Map();
+    let best = 1;
+    let bestCount = 0;
+
+    records.forEach(item => {
+        const scale = recordMarginScale(item);
+        const key = Math.round(scale * 1000) / 1000;
+        const count = (counts.get(key) || 0) + 1;
+        counts.set(key, count);
+        if (count > bestCount) {
+            best = key;
+            bestCount = count;
+        }
+    });
+
+    return best;
+}
 
 // ---------------------------------------------------------------------------
 // Active selection

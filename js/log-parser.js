@@ -8,7 +8,8 @@
 //
 //   {
 //     header:      { songName, levelPath, timestamp, bpm, speed, pitch, isAngle,
-//                    formatVersion, versionText, hitMarginVersion, judgeCodeVersion },
+//                    formatVersion, versionText, hitMarginVersion, judgeCodeVersion,
+//                    difficulty },
 //     players:     [ { tuples, timeFirst }, ... ]   // index = playerId
 //     playerCount: int,
 //     truncated:   bool
@@ -32,6 +33,20 @@
 const TRUNCATED = Symbol('log-truncated');
 
 const HIT_MARGIN_VERSIONS = { 1: 'Legacy', 2: 'Game34' };
+
+// TimingShow's difficulty tiers, as the log header stores them: 0 lenient,
+// 1 normal, 2 strict. Anything else -- including the 255 a binary header holds
+// for "the game did not say" -- reads as unknown, and the judgment bands then
+// fall back to Normal, which is what TimingShow's own replay does.
+const DIFFICULTY_UNKNOWN = -1;
+const DIFFICULTY_STRICT = 2;
+
+function difficultyValue(value) {
+    const number = Number(value);
+    return Number.isInteger(number) && number >= 0 && number <= DIFFICULTY_STRICT
+        ? number
+        : DIFFICULTY_UNKNOWN;
+}
 
 // The binary header stores the hit margin table as a byte where JSON stores its
 // name; both end up as the name, which is what isGame34Log() reads.
@@ -128,11 +143,13 @@ function parseV2(view, offset) {
 // stream does not restart them per player. `hasPlayerId` is the v8 byte that
 // leads each record; without it (v5..v7) every record is player 0's.
 // `hasHitContext` is the v9 tail -- four float32 fields plus a floor-id varint
-// -- that must be consumed in step or the next record starts at the wrong byte.
+// -- and `hasMarginScale` the v11 one, a float32 after it; both have to be
+// consumed in step or the next record starts at the wrong byte.
 function parseBinaryRecords(view, offset, options) {
     const compactXor = options.compactXor;
     const hasPlayerId = options.hasPlayerId;
     const hasHitContext = options.hasHitContext;
+    const hasMarginScale = options.hasMarginScale;
     const dv = new DataView(view.buffer, view.byteOffset);
     const streams = [];
     let prevTimeBits = 0n;
@@ -212,14 +229,16 @@ function parseBinaryRecords(view, offset, options) {
             const isXP = readByte() !== 0;
 
             // v9 appends the hit context: angle, the floor's BPM/speed/pitch at
-            // the moment of the hit, and the floor id. The tuple keeps the JSON
-            // v8 column order so both loaders hand processOffsetRecords() the
-            // same shape. Missing context is written as float NaN / -1.
+            // the moment of the hit, and the floor id. v11 appends the floor's
+            // margin scale after it. The tuple keeps the JSON column order so
+            // both loaders hand processOffsetRecords() the same shape. Missing
+            // context is written as float NaN / -1.
             const angleDeg = hasHitContext ? readFloat32() : NaN;
             const hitBpm = hasHitContext ? readFloat32() : NaN;
             const hitSpeed = hasHitContext ? readFloat32() : NaN;
             const hitPitch = hasHitContext ? readFloat32() : NaN;
             const floorId = hasHitContext ? readZigZagVarInt() : -1;
+            const marginScale = hasMarginScale ? readFloat32() : NaN;
 
             streamFor(playerId).push([
                 Math.round(timeMs * 1000) / 1000,
@@ -231,7 +250,8 @@ function parseBinaryRecords(view, offset, options) {
                 hitBpm,
                 hitSpeed,
                 hitPitch,
-                floorId
+                floorId,
+                marginScale
             ]);
         }
     } catch (err) {
@@ -273,6 +293,7 @@ function parseTlogData(decompressed) {
     let playerCount = 1;
     let hitMarginVersion = null;
     let judgeCodeVersion = null;
+    let difficulty = DIFFICULTY_UNKNOWN;
     let truncated = false;
 
     if (version >= 5) {
@@ -289,6 +310,13 @@ function parseTlogData(decompressed) {
             declaredPlayers = declared > 0 ? declared : 1;
         }
 
+        // v10 writes the difficulty the session ran on right after the player
+        // count, as one byte (255 = unknown).
+        if (version >= 10) {
+            if (offset + 1 > view.byteLength) throw new Error('Missing v10 format metadata');
+            difficulty = difficultyValue(view[offset++]);
+        }
+
         // v9 appends the per-hit context (angle, hit BPM/speed/pitch, floor id)
         // to every record. It has to be consumed here even though no chart reads
         // it: otherwise those bytes become the next record's player id and the
@@ -296,7 +324,8 @@ function parseTlogData(decompressed) {
         const records = parseBinaryRecords(view, offset, {
             compactXor: version >= 7,
             hasPlayerId: version >= 8,
-            hasHitContext: version >= 9
+            hasHitContext: version >= 9,
+            hasMarginScale: version >= 11
         });
         truncated = records.truncated;
 
@@ -330,7 +359,8 @@ function parseTlogData(decompressed) {
             versionText: version >= 5 ? `TimingShow binary v${version}` : (version === 1 ? '1.8.2- (v1)' : `1.9.0+ (v${version})`),
             isAngle: isAngle,
             hitMarginVersion: hitMarginVersionText(hitMarginVersion),
-            judgeCodeVersion
+            judgeCodeVersion,
+            difficulty
         },
         players,
         playerCount,
@@ -349,7 +379,7 @@ const OFFSETS_KEY_PREFIX = 'offsets_';
 // JSON file that merely happens to parse.
 const HEADER_FIELDS = [
     'songName', 'levelPath', 'timestamp', 'bpm', 'speed', 'pitch', 'isAngle',
-    'formatVersion', 'hitMarginVersion', 'judgeCodeVersion'
+    'formatVersion', 'hitMarginVersion', 'judgeCodeVersion', 'difficulty'
 ];
 
 // v7 files one array per player under `offsets_<N>`; the bare `offsets` of the
@@ -447,8 +477,8 @@ function repairTruncatedJson(text) {
     return text.slice(0, lastEnd) + lastOpen.reverse().join('');
 }
 
-// Reads a TimingShow JSON log: v8 (`offsets_1..N`, one array per player, ten
-// columns per hit), v7 (same keys, five columns) and the older single-player
+// Reads a TimingShow JSON log: v11 (`offsets_1..N`, one array per player,
+// eleven columns per hit), v8/v9 (same keys, ten) and the older single-player
 // layouts alike. Returns null when the file holds no offsets at all, which is
 // what "not one of ours" looks like.
 function readJsonLog(text) {
@@ -514,7 +544,8 @@ function readJsonLog(text) {
             isAngle: parsed.isAngle === true,
             versionText,
             hitMarginVersion: hitMarginVersionText(parsed.hitMarginVersion),
-            judgeCodeVersion: parsed.judgeCodeVersion || null
+            judgeCodeVersion: parsed.judgeCodeVersion || null,
+            difficulty: difficultyValue(parsed.difficulty)
         },
         players,
         playerCount: players.length,

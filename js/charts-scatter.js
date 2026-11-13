@@ -1,17 +1,50 @@
 // charts-scatter.js -- the main offset-vs-hit scatter plot, plus the judgment
 // windows drawn behind it.
 
-// Judgment window bands for the scatter plot. Logs do not record the floor
-// difficulty, so the pass window uses the same normal-difficulty threshold as
-// TimingShow's log replay; pitch and speed scale the effective BPM.
-const JUDGE_BAND_THRESHOLD_BPM = 310;
-const JUDGE_BAND_PASS_BASE_MS = 20000 / JUDGE_BAND_THRESHOLD_BPM;
+// Judgment window bands for the scatter plot. The log header carries the game
+// difficulty and every hit carries its floor's margin scale (v11), so the
+// bands follow the windows that actually applied: the difficulty caps the pass
+// ("too early" / "too late") window and the BPM at which the windows stop
+// shrinking, and the margin scale multiplies what is left. This mirrors
+// TimingShow's own HitWindowScale, which the game itself does not expose.
 const JUDGE_BAND_MIN_WINDOW_MS = 25;
 const JUDGE_BAND_XP_MIN_MS = 16.666666;
 
-function calcJudgeWindowMs(bpm, angle, baseMs) {
+// Threshold BPM per difficulty tier, as the log stores them (0 lenient, 1
+// normal, 2 strict). A tier's threshold is the BPM at which a 60-degree window
+// reaches 20000 / threshold ms and stops shrinking, so the frozen pass window
+// is 91 / 65 / 40 ms. The game names the first two as 220 and 310, but the
+// windows themselves come from the exact values -- 20000 / 310 is 64.5 ms,
+// half a millisecond tighter than the 65 the game actually uses.
+const DIFFICULTY_THRESHOLD_BPM = [219.78, 307.69, 500];
+const DIFFICULTY_DEFAULT = 1;
+
+// A log that does not say which tier it ran on (older logs, CRPL2) is read as
+// Normal, the same fallback TimingShow's log replay uses.
+function bandDifficulty() {
+    const difficulty = Number(currentMetaData && currentMetaData.difficulty);
+    return Number.isInteger(difficulty) && difficulty >= 0 && difficulty <= DIFFICULTY_STRICT
+        ? difficulty
+        : DIFFICULTY_DEFAULT;
+}
+
+function bandThresholdBpm() {
+    return DIFFICULTY_THRESHOLD_BPM[bandDifficulty()];
+}
+
+function bandPassBaseMs() {
+    return 20000 / bandThresholdBpm();
+}
+
+// max(angle term, frozen base) x margin scale, never below 25 ms. The angle is
+// the window's own: 30 degrees for Perfect, 45 for E/L Perfect, 60 for the pass
+// edge. The base term is what freezes once the effective BPM passes the
+// difficulty's threshold, and it is why harder tiers keep a tighter window at
+// the same BPM.
+function calcJudgeWindowMs(bpm, angle, baseMs, marginScale) {
+    const scale = Number.isFinite(marginScale) && marginScale > 0 ? marginScale : 1;
     const angleTerm = 60000 / bpm * angle / 180;
-    return Math.max(Math.max(angleTerm, baseMs), JUDGE_BAND_MIN_WINDOW_MS);
+    return Math.max(Math.max(angleTerm, baseMs) * scale, JUDGE_BAND_MIN_WINDOW_MS);
 }
 
 // The effective BPM the bands would have used before per-hit context existed:
@@ -21,7 +54,7 @@ function headerEffectiveBpm() {
     const rawBpm = Number(currentMetaData && currentMetaData.bpm);
     const pitch = Number(currentMetaData && currentMetaData.pitch) > 0 ? Number(currentMetaData.pitch) : 1;
     const speed = Number(currentMetaData && currentMetaData.speed) > 0 ? Number(currentMetaData.speed) : 1;
-    return rawBpm > 0 ? rawBpm * pitch * speed : JUDGE_BAND_THRESHOLD_BPM;
+    return rawBpm > 0 ? rawBpm * pitch * speed : bandThresholdBpm();
 }
 
 // The BPM at the moment of one hit, or null when the log has no context for it.
@@ -33,12 +66,12 @@ function recordEffectiveBpm(record) {
     return hasUsableHitParams(bpm, speed, pitch) ? bpm * speed * pitch : null;
 }
 
-function judgeWindowsForBpm(bpm) {
+function judgeWindowsForBpm(bpm, marginScale) {
     return {
-        perfect: calcJudgeWindowMs(bpm, 30, 20),
-        elPerfect: calcJudgeWindowMs(bpm, 45, 30),
-        pass: calcJudgeWindowMs(bpm, 60, JUDGE_BAND_PASS_BASE_MS),
-        xp: Math.max(60000 / bpm * 12.5 / 180, JUDGE_BAND_XP_MIN_MS)
+        perfect: calcJudgeWindowMs(bpm, 30, 20, marginScale),
+        elPerfect: calcJudgeWindowMs(bpm, 45, 30, marginScale),
+        pass: calcJudgeWindowMs(bpm, 60, bandPassBaseMs(), marginScale),
+        xp: Math.max(60000 / bpm * 12.5 / 180 * (marginScale > 0 ? marginScale : 1), JUDGE_BAND_XP_MIN_MS)
     };
 }
 
@@ -50,10 +83,11 @@ function bandValue(valueMs, bpm) {
     return displayUnit === 'deg' ? msToAngle(valueMs, bpm) : valueMs;
 }
 
-// -> [{ bpm, fromX, toX }], one entry per run of consecutive hits that share an
-// effective BPM. A constant-BPM log is one segment, which keeps the old look; a
-// log whose BPM varies gets one band set per stretch. Old records without
-// context borrow the header BPM, like the bands always did.
+// -> [{ bpm, marginScale, fromX, toX }], one entry per run of consecutive hits
+// that share an effective BPM *and* a margin scale -- both change the window,
+// so a stretch that changes either needs its own bands. A constant-BPM log is
+// one segment, which keeps the old look. Old records without context borrow the
+// header BPM and the run's dominant scale, like the bands always did.
 const JUDGE_BAND_MAX_SEGMENTS = 60;
 
 function buildJudgeBandSegments(records, useHitAxis) {
@@ -67,11 +101,14 @@ function buildJudgeBandSegments(records, useHitAxis) {
         const bpm = recordEffectiveBpm(records[index]) || fallbackBpm;
         if (!(bpm > 0)) continue;
 
+        const marginScale = recordMarginScale(records[index]);
         const last = segments[segments.length - 1];
-        if (last && Math.abs(bpm - last.bpm) <= Math.max(1e-6, last.bpm * 1e-6)) {
+        const sameBpm = last && Math.abs(bpm - last.bpm) <= Math.max(1e-6, last.bpm * 1e-6);
+        const sameScale = last && Math.abs(marginScale - last.marginScale) <= 1e-6;
+        if (sameBpm && sameScale) {
             last.toX = x;
         } else {
-            segments.push({ bpm, fromX: x, toX: x });
+            segments.push({ bpm, marginScale, fromX: x, toX: x });
         }
     }
 
@@ -82,11 +119,17 @@ function buildJudgeBandSegments(records, useHitAxis) {
     }
 
     if (segments.length > JUDGE_BAND_MAX_SEGMENTS) {
-        // A chart with more BPM changes than bands can carry: fall back to the
-        // median BPM over the whole run rather than painting hundreds of boxes.
+        // A chart with more changes than bands can carry: fall back to the
+        // median BPM and the dominant margin scale over the whole run rather
+        // than painting hundreds of boxes.
         const sorted = segments.map(segment => segment.bpm).sort((a, b) => a - b);
         const median = sorted[Math.floor(sorted.length / 2)];
-        return [{ bpm: median, fromX: segments[0].fromX, toX: segments[segments.length - 1].toX }];
+        return [{
+            bpm: median,
+            marginScale: dominantMarginScale(records),
+            fromX: segments[0].fromX,
+            toX: segments[segments.length - 1].toX
+        }];
     }
     return segments;
 }
@@ -102,7 +145,12 @@ function buildJudgeBandAnnotations(records, useHitAxis, dynamicBands) {
     // chart that changes speed shows the window that actually applied.
     const segments = dynamicBands
         ? buildJudgeBandSegments(records, useHitAxis)
-        : [{ bpm: headerEffectiveBpm(), fromX: undefined, toX: undefined }];
+        : [{
+            bpm: headerEffectiveBpm(),
+            marginScale: dominantMarginScale(records),
+            fromX: undefined,
+            toX: undefined
+        }];
 
     const addBand = (id, fromX, toX, bpm, fromMs, toMs, color) => {
         const box = {
@@ -122,8 +170,8 @@ function buildJudgeBandAnnotations(records, useHitAxis, dynamicBands) {
     };
 
     segments.forEach((segment, segmentIndex) => {
-        const { bpm, fromX, toX } = segment;
-        const bands = judgeWindowsForBpm(bpm);
+        const { bpm, marginScale, fromX, toX } = segment;
+        const bands = judgeWindowsForBpm(bpm, marginScale);
         const suffix = `_s${segmentIndex}`;
 
         // Early/Late outermost, then E/L Perfect, Perfect and finally XPerfect:

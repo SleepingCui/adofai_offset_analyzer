@@ -99,6 +99,8 @@ function updateMetaInfo() {
             <div><strong>${t('analysisTime')}:</strong> ${currentMetaData.timestamp ? new Date(currentMetaData.timestamp * 1000).toLocaleString() : 'Unknown'}</div>
             <div><strong>${t('judgeVersion')}:</strong> ${currentMetaData.judgeCodeVersion ? `v${currentMetaData.judgeCodeVersion}` : t('legacyMode')}</div>
             <div><strong>${t('hitMarginVersion')}:</strong> ${currentMetaData.hitMarginVersion ?? 'Unknown'}</div>
+            <div><strong>${t('difficulty')}:</strong> ${getDifficultyLabel(getLogDifficulty())}</div>
+            <div><strong>${t('marginScale')}:</strong> ${formatMarginScale(dominantMarginScale(globalOffsets))}</div>
             <div><strong>${t('bpm')}:</strong> ${currentMetaData.bpm ?? 'Unknown'}</div>
             <div><strong>${t('speed')}:</strong> ${currentMetaData.speed ?? 'Unknown'}</div>
             <div><strong>${t('pitch')}:</strong> ${currentMetaData.pitch ?? 'Unknown'}</div>
@@ -402,6 +404,32 @@ const CHART_SECTIONS = [
 ];
 CHART_SECTIONS.forEach(entry => { entry.visible = entry.defaultVisible; });
 const DEFAULT_CHART_ORDER = CHART_SECTIONS.map(entry => entry.key);
+
+// TimingShow writes the game difficulty into every log header (JSON v9, binary
+// v10) as 0 lenient / 1 normal / 2 strict, or -1 when the run did not say. The
+// judgment bands read it to pick the threshold BPM, so it is surfaced here for
+// both the panel and the bands.
+const DIFFICULTY_LABEL_KEYS = ['difficultyLenient', 'difficultyNormal', 'difficultyStrict'];
+
+function getLogDifficulty() {
+    const difficulty = currentMetaData ? Number(currentMetaData.difficulty) : DIFFICULTY_UNKNOWN;
+    return Number.isInteger(difficulty) && difficulty >= 0 && difficulty <= DIFFICULTY_STRICT
+        ? difficulty
+        : DIFFICULTY_UNKNOWN;
+}
+
+function getDifficultyLabel(difficulty) {
+    return Number.isInteger(difficulty) && difficulty >= 0 && difficulty < DIFFICULTY_LABEL_KEYS.length
+        ? t(DIFFICULTY_LABEL_KEYS[difficulty])
+        : t('difficultyUnknown');
+}
+
+// The scale is untouched on most logs, so the unit carries the meaning: 1x stays
+// 1x instead of growing three trailing zeros.
+function formatMarginScale(scale) {
+    const value = Number.isFinite(scale) && scale > 0 ? scale : 1;
+    return Number(value.toFixed(3)).toString() + '×';
+}
 
 function isGame34Log() {
     const version = currentMetaData && currentMetaData.hitMarginVersion;

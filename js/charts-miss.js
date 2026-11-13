@@ -279,6 +279,9 @@ function updateScatterTooltip(context, useTimeline, unit) {
         if (Number.isFinite(hit[REC.MS]) && displayUnit !== 'ms') {
             parts.push(hit[REC.MS].toFixed(3) + ' ms');
         }
+        if (Number.isFinite(hit[REC.MARGIN]) && Math.abs(hit[REC.MARGIN] - 1) > 1e-4) {
+            parts.push(t('marginScale') + ' ' + formatMarginScale(hit[REC.MARGIN]));
+        }
         if (hit[REC.BPM] !== null && hit[REC.SPEED] !== null && hit[REC.PITCH] !== null) {
             const trim = value => Number(value.toFixed(2)).toString();
             const effectiveBpm = hit[REC.BPM] * hit[REC.SPEED] * hit[REC.PITCH];
