@@ -87,37 +87,53 @@
             <h3 data-i18n="scatterTitle">偏移量散点图</h3>
             <div class="chart-wrapper">
                 <div class="scatter-filter-container" id="scatterFilterContainer" style="display: none;">
-                    <div class="outlier-filter-group">
-                        <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
-                            <input type="checkbox" id="scatterUseHitCheckbox" style="cursor: pointer; accent-color: var(--accent-color);">
-                            <span data-i18n="useHitAxis">使用 Hit 作为横轴</span>
-                        </label>
-                        <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
-                            <input type="checkbox" id="ignoreOutliersCheckbox" style="cursor: pointer; accent-color: var(--accent-color);">
-                            <span data-i18n="ignoreOutliers">忽略离群点</span>
-                        </label>
-                        <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
-                            <input type="checkbox" id="scatterShowBandsCheckbox" checked style="cursor: pointer; accent-color: var(--accent-color);">
-                            <span data-i18n="showJudgeBands">显示判定色带</span>
-                        </label>
-                        <label id="dynamicBandsLabel" style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
-                            <input type="checkbox" id="scatterDynamicBandsCheckbox" style="cursor: pointer; accent-color: var(--accent-color);">
-                            <span data-i18n="dynamicJudgeBands">动态判定色带</span>
-                        </label>
-                        <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
-                            <input type="checkbox" id="scatterShowHitDetailsCheckbox" style="cursor: pointer; accent-color: var(--accent-color);">
-                            <span data-i18n="showHitDetails">显示击打详情</span>
-                        </label>
-                        <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
-                            <input type="checkbox" id="scatterBpmMarksCheckbox" style="cursor: pointer; accent-color: var(--accent-color);">
-                            <span data-i18n="bpmMarks">标记 BPM 变化</span>
-                        </label>
-                        <label class="range-control">
-                            <span data-i18n="pointSize">点大小</span>
-                            <input type="range" id="pointSizeSlider" min="1" max="10" step="1" value="3">
-                            <span id="pointSizeValue" class="range-value">3 px</span>
-                        </label>
-                        <span id="ignoredCountBadge" class="ignored-count-badge"></span>
+                    <div class="scatter-settings-anchor" id="scatterSettingsAnchor">
+                        <button class="scatter-settings-toggle" id="scatterSettingsToggle" type="button"
+                            aria-expanded="false" aria-controls="scatterSettingsPanel" data-i18n-title="scatterSettings"
+                            title="散点图设置" aria-label="散点图设置">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+                                stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+                                <path d="M2 4h12M2 8h12M2 12h12"></path>
+                                <circle cx="6" cy="4" r="1.9" fill="currentColor" stroke="none"></circle>
+                                <circle cx="11" cy="8" r="1.9" fill="currentColor" stroke="none"></circle>
+                                <circle cx="7" cy="12" r="1.9" fill="currentColor" stroke="none"></circle>
+                            </svg>
+                        </button>
+                        <div class="chart-config-panel scatter-settings-panel" id="scatterSettingsPanel" hidden>
+                            <div class="chart-config-title" data-i18n="scatterSettings">散点图设置</div>
+                            <div class="scatter-settings" id="scatterSettings">
+                                <label class="scatter-setting-row">
+                                    <input type="checkbox" id="scatterUseHitCheckbox">
+                                    <span data-i18n="useHitAxis">使用 Hit 作为横轴</span>
+                                </label>
+                                <label class="scatter-setting-row">
+                                    <input type="checkbox" id="ignoreOutliersCheckbox">
+                                    <span data-i18n="ignoreOutliers">忽略离群点</span>
+                                </label>
+                                <label class="scatter-setting-row">
+                                    <input type="checkbox" id="scatterShowBandsCheckbox" checked>
+                                    <span data-i18n="showJudgeBands">显示判定色带</span>
+                                </label>
+                                <label class="scatter-setting-row" id="dynamicBandsLabel">
+                                    <input type="checkbox" id="scatterDynamicBandsCheckbox">
+                                    <span data-i18n="dynamicJudgeBands">动态判定色带</span>
+                                </label>
+                                <label class="scatter-setting-row">
+                                    <input type="checkbox" id="scatterShowHitDetailsCheckbox">
+                                    <span data-i18n="showHitDetails">显示击打详情</span>
+                                </label>
+                                <label class="scatter-setting-row">
+                                    <input type="checkbox" id="scatterBpmMarksCheckbox">
+                                    <span data-i18n="bpmMarks">标记 BPM 变化</span>
+                                </label>
+                                <label class="scatter-setting-row scatter-setting-range">
+                                    <span data-i18n="pointSize">点大小</span>
+                                    <input type="range" id="pointSizeSlider" min="1" max="10" step="1" value="2">
+                                    <span id="pointSizeValue" class="range-value">2 px</span>
+                                </label>
+                                <span id="ignoredCountBadge" class="ignored-count-badge"></span>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="range-inputs">
@@ -134,6 +150,29 @@
                 <div class="chart-canvas-box">
                     <canvas id="scatterChart"></canvas>
                 </div>
+                <div class="chart-hover-tooltip" id="scatterTooltip" hidden></div>
+            </div>
+        </div>
+
+        <div class="chart-section" id="sectionMiss" hidden>
+            <h3 data-i18n="missTitle">失误条</h3>
+            <div class="stat-tiles" id="missStats"></div>
+            <div class="chart-wrapper chart-wrapper--spectrum">
+                <div class="miss-filter-container" id="missFilterContainer" style="display: none;">
+                    <div class="miss-filter-group">
+                        <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                            <input type="checkbox" id="missUseHitCheckbox" style="cursor: pointer; accent-color: var(--accent-color);">
+                            <span data-i18n="missUseHitAxis">按按键位置</span>
+                        </label>
+                        <span class="miss-basis" id="missBasis"></span>
+                    </div>
+                    <div class="combo-legend miss-legend" id="missLegend"></div>
+                </div>
+                <div class="chart-canvas-box">
+                    <canvas id="missChart"></canvas>
+                    <div class="miss-empty" id="missEmpty" hidden data-i18n="missNone">本次游玩没有非 Perfect 判定</div>
+                </div>
+                <div class="chart-hover-tooltip" id="missTooltip" hidden></div>
             </div>
         </div>
 
