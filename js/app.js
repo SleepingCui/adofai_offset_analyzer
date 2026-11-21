@@ -22,10 +22,21 @@ function clearData() {
     globalStdDev = 0;
     globalCounts = {};
     currentMetaData = null;
+    currentLogFileName = '';
     metaExpanded = false;
+    if (typeof setActiveHistoryId === 'function') setActiveHistoryId(null);
     minOffsetFilter = null;
     maxOffsetFilter = null;
     ignoreOutliers = false;
+
+    // Axis expansion is a view option, not part of the run: clear it with the
+    // data so the next import starts from the same cropped default.
+    CHART_SECTIONS.forEach(entry => {
+        if (entry.axisCrop) entry.showOutOfRange = false;
+    });
+    document.querySelectorAll('input[data-show-out-of-range]').forEach(input => {
+        input.checked = false;
+    });
 
     // The selection is derived from the run and dies with it. Dropped here
     // rather than left to the next import to invalidate, so that anything
@@ -148,6 +159,7 @@ function clearData() {
 
     // Back to the empty state: no data, no chart frames.
     updatePageState();
+    if (typeof saveChartState === 'function') saveChartState();
 }
 
 document.getElementById('clearData').addEventListener('click', clearData);
@@ -162,62 +174,76 @@ function updateAllCharts() {
     });
 }
 
-async function LoadFile(file) {
+// One parse path for the main import and the second log used by the replay
+// comparison. Returns the same shape LoadFile has always consumed; throws with a
+// user-facing message when the bytes are not a log the page understands.
+async function readLogFile(file) {
+    const fileName = file.name.toLowerCase();
+
+    if (fileName.endsWith('.json')) {
+        const data = readJsonLog(await file.text());
+        if (!data) throw new Error(t('unknownFormat'));
+        return data;
+    }
+
+    if (fileName.endsWith('.crpl2')) {
+        if (typeof Crpl2 === 'undefined') {
+            throw new Error('concrpl2.js library is not loaded!');
+        }
+        const arrayBuffer = await file.arrayBuffer();
+        const { json } = await Crpl2.toTimingshow(arrayBuffer, file.name);
+        const parsed = JSON.parse(json);
+
+        return {
+            header: {
+                songName: parsed.songName,
+                levelPath: parsed.levelPath,
+                // CRPL2 stamps milliseconds where TimingShow stamps seconds.
+                timestamp: parsed.timestamp / 1000,
+                bpm: null,
+                speed: null,
+                pitch: null,
+                isAngle: true,
+                versionText: 'CRPL2',
+                hitMarginVersion: null,
+                judgeCodeVersion: null
+            },
+            players: [{ tuples: parsed.offsets, timeFirst: false }],
+            playerCount: 1,
+            truncated: false
+        };
+    }
+
+    const arrayBuffer = await file.arrayBuffer();
+    let fileData = new Uint8Array(arrayBuffer);
+    const isGzip = fileName.endsWith('.gz') || (fileData.length > 2 && fileData[0] === 0x1F && fileData[1] === 0x8B);
+    let gzipTruncated = false;
+    if (isGzip) {
+        if (typeof pako === 'undefined') {
+            throw new Error('pako library is not loaded!');
+        }
+        const unwrapped = gunzipLog(fileData);
+        fileData = unwrapped.bytes;
+        gzipTruncated = unwrapped.truncated;
+    }
+
+    const data = parseTlogData(fileData);
+    if (gzipTruncated) data.truncated = true;
+    return data;
+}
+
+async function LoadFile(file, options) {
     if (!file) return;
+    const loadOptions = options || {};
+    // A fresh import starts with no active history card; a reopen keeps its
+    // card highlighted while the file is parsed.
+    if (!loadOptions.historyId && typeof setActiveHistoryId === 'function') {
+        setActiveHistoryId(null);
+    }
 
     try {
-        const fileName = file.name.toLowerCase();
-        let data = null;
-
-        if (fileName.endsWith('.json')) {
-            data = readJsonLog(await file.text());
-            if (!data) {
-                alert(t('unknownFormat'));
-                return;
-            }
-        } else if (fileName.endsWith('.crpl2')) {
-            if (typeof Crpl2 === 'undefined') {
-                throw new Error('concrpl2.js library is not loaded!');
-            }
-            const arrayBuffer = await file.arrayBuffer();
-            const { json } = await Crpl2.toTimingshow(arrayBuffer, file.name);
-            const parsed = JSON.parse(json);
-
-            data = {
-                header: {
-                    songName: parsed.songName,
-                    levelPath: parsed.levelPath,
-                    // CRPL2 stamps milliseconds where TimingShow stamps seconds.
-                    timestamp: parsed.timestamp / 1000,
-                    bpm: null,
-                    speed: null,
-                    pitch: null,
-                    isAngle: true,
-                    versionText: 'CRPL2',
-                    hitMarginVersion: null,
-                    judgeCodeVersion: null
-                },
-                players: [{ tuples: parsed.offsets, timeFirst: false }],
-                playerCount: 1,
-                truncated: false
-            };
-        } else {
-            const arrayBuffer = await file.arrayBuffer();
-            let fileData = new Uint8Array(arrayBuffer);
-            const isGzip = fileName.endsWith('.gz') || (fileData.length > 2 && fileData[0] === 0x1F && fileData[1] === 0x8B);
-            let gzipTruncated = false;
-            if (isGzip) {
-                if (typeof pako === 'undefined') {
-                    throw new Error('pako library is not loaded!');
-                }
-                const unwrapped = gunzipLog(fileData);
-                fileData = unwrapped.bytes;
-                gzipTruncated = unwrapped.truncated;
-            }
-
-            data = parseTlogData(fileData);
-            if (gzipTruncated) data.truncated = true;
-        }
+        const data = await readLogFile(file);
+        currentLogFileName = file.name;
 
         // The raw streams are kept so the records can be rebuilt in the other
         // unit. processOffsetRecords numbers the hits of the stream it is given,
@@ -269,13 +295,36 @@ async function LoadFile(file) {
             truncated: data.truncated === true
         };
 
+        if (typeof appSettings !== 'undefined' && appSettings.autoExpandMeta) {
+            metaExpanded = true;
+        }
         updateMetaInfo();
         calculateStaticStats();
+
+        // One history entry per import. The same call updates the existing
+        // entry when a file is reopened from the rail, instead of duplicating
+        // it. The log bytes are copied into IndexedDB asynchronously, so the
+        // charts do not wait for storage.
+        if (typeof recordHistoryEntry === 'function') {
+            try {
+                recordHistoryEntry(file, {
+                    source: loadOptions.source || 'import',
+                    historyId: loadOptions.historyId || null
+                });
+            } catch (historyError) {
+                // History is a convenience; a storage failure must not abort
+                // the charts for a log that parsed fine.
+                console.warn('History entry was not recorded:', historyError);
+            }
+        }
+
         updateAllCharts();
+        return true;
 
     } catch (err) {
         alert(t('parseFailed') + '\n' + err.message);
         console.error(err);
+        return false;
     }
 }
 
@@ -443,9 +492,18 @@ document.getElementById('emptyImport')?.addEventListener('click', () => {
 });
 
 document.getElementById('chartConfigReset')?.addEventListener('click', () => {
-    CHART_SECTIONS.forEach(entry => setChartVisible(entry.key, entry.defaultVisible));
+    CHART_SECTIONS.forEach(entry => {
+        if (entry.axisCrop) setChartShowOutOfRange(entry.key, false);
+        setChartVisible(entry.key, entry.defaultVisible);
+    });
     resetChartOrder();
     renderChartConfigList();
+});
+
+document.querySelectorAll('input[data-show-out-of-range]').forEach(input => {
+    input.addEventListener('change', () => {
+        setChartShowOutOfRange(input.dataset.showOutOfRange, input.checked);
+    });
 });
 
 // The menu closes on an outside click or Escape, the way a corner popover is
@@ -486,6 +544,7 @@ document.getElementById('btnResetRange')?.addEventListener('click', () => {
 
 document.getElementById('jsonFile').addEventListener('change', function(e) {
     LoadFile(e.target.files[0]);
+    e.target.value = '';
 });
 
 // Language is a toolbar button with a small popover, so it needs the same
@@ -564,7 +623,7 @@ async function loadSourceFromUrl() {
 
         const blob = await response.blob();
         const fileName = params.get('name') || 'timingshow.log';
-        await LoadFile(new File([blob], fileName, { type: blob.type || 'application/octet-stream' }));
+        await LoadFile(new File([blob], fileName, { type: blob.type || 'application/octet-stream' }), { source: 'server' });
 
         // Keep the page URL shareable and prevent accidental re-import on refresh.
         const cleanUrl = window.location.pathname + window.location.hash;
@@ -584,6 +643,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     setTheme(currentTheme, false);
+    applySavedChartState();
     setLanguage(currentLang);
     updatePageState();
     loadSourceFromUrl();

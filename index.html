@@ -33,6 +33,37 @@
 </head>
 <body>
 
+<aside class="history-rail" id="historyRail" aria-labelledby="historyRailTitle">
+    <div class="history-rail-head">
+        <div>
+            <h2 class="history-rail-title" id="historyRailTitle" data-i18n="historyTitle">历史记录</h2>
+            <p class="history-rail-subtitle" data-i18n="historySubtitle">点击记录可重新分析</p>
+        </div>
+        <button class="icon-btn history-rail-close" id="historyRailClose" type="button" data-i18n-title="historyRailClose" aria-label="关闭历史栏">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                <path d="M6 6l12 12M18 6L6 18"></path>
+            </svg>
+        </button>
+    </div>
+    <div class="history-rail-actions">
+        <label class="btn history-import-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 5v14M5 12h14"></path>
+            </svg>
+            <span data-i18n="importFile">导入文件</span>
+            <input type="file" id="railFileInput" accept=".json,.tlog,.tlog.gz,.gz,.crpl2">
+        </label>
+        <button class="btn-sm" id="historyClear" type="button" data-i18n="historyClear">清空历史</button>
+    </div>
+    <div class="history-rail-meta"><span id="historyCount"></span></div>
+    <div class="history-rail-list" id="historyList"></div>
+    <div class="history-rail-empty" id="historyEmpty" data-i18n="historyEmpty">还没有历史记录。</div>
+    <p class="history-disabled-hint" id="historyDisabledHint" data-i18n="historyDisabledHint" hidden>历史记录已关闭，新的导入不会被保存。</p>
+    <div class="history-rail-foot" id="historyStorage"></div>
+</aside>
+<div class="rail-backdrop" id="railBackdrop" hidden></div>
+
+<main class="app-main">
 <div class="page-toolbar" id="pageToolbar">
     <div class="lang-menu" id="langMenu">
         <button class="icon-btn lang-toggle" id="langToggle" type="button"
@@ -53,6 +84,19 @@
             <button class="lang-option" type="button" role="option" data-lang="kr" aria-selected="false">한국어</button>
         </div>
     </div>
+    <button class="icon-btn" id="historyToggle" type="button" data-i18n-title="historyRailToggle" aria-label="历史记录" aria-expanded="true" aria-controls="historyRail">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 12a9 9 0 1 0 3-6.7"></path>
+            <path d="M3 4v5h5"></path>
+            <path d="M12 7v5l3 2"></path>
+        </svg>
+    </button>
+    <button class="icon-btn" id="settingsToggle" type="button" data-i18n-title="settingsTitle" aria-label="设置" aria-expanded="false" aria-controls="settingsPanel">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path>
+        </svg>
+    </button>
     <button class="icon-btn" id="themeToggle" type="button" data-i18n-title="themeToggle" aria-label="切换主题" aria-pressed="false">
         <svg class="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
             <circle cx="12" cy="12" r="4"></circle>
@@ -224,7 +268,13 @@
         </div>
 
         <div class="chart-section" id="sectionHeatmap" hidden>
-            <h3 data-i18n="heatmapTitle">偏移量密度热力图</h3>
+            <div class="chart-heading">
+                <h3 data-i18n="heatmapTitle">偏移量密度热力图</h3>
+                <label class="axis-full-toggle" data-i18n-title="showOutOfRangeHint">
+                    <input type="checkbox" data-show-out-of-range="heatmap">
+                    <span data-i18n="showOutOfRange">显示超出范围的点</span>
+                </label>
+            </div>
             <div class="stat-tiles" id="heatmapStats"></div>
             <div class="chart-wrapper">
                 <div class="heatmap-filter-container" id="heatmapFilterContainer" style="display: none;">
@@ -315,7 +365,13 @@
         </div>
 
         <div class="chart-section" id="sectionReturn" hidden>
-            <h3 data-i18n="returnTitle">相邻两键偏移量关系</h3>
+            <div class="chart-heading">
+                <h3 data-i18n="returnTitle">相邻两键偏移量关系</h3>
+                <label class="axis-full-toggle" data-i18n-title="showOutOfRangeHint">
+                    <input type="checkbox" data-show-out-of-range="returnMap">
+                    <span data-i18n="showOutOfRange">显示超出范围的点</span>
+                </label>
+            </div>
             <div class="stat-tiles" id="returnStats"></div>
             <div class="chart-wrapper">
                 <div class="axis-crop-badge" id="returnAxisCropBadge"></div>
@@ -337,7 +393,13 @@
         </div>
 
         <div class="chart-section" id="sectionDistribution" hidden>
-            <h3 data-i18n="distTitle">正态分布图</h3>
+            <div class="chart-heading">
+                <h3 data-i18n="distTitle">正态分布图</h3>
+                <label class="axis-full-toggle" data-i18n-title="showOutOfRangeHint">
+                    <input type="checkbox" data-show-out-of-range="distribution">
+                    <span data-i18n="showOutOfRange">显示超出范围的点</span>
+                </label>
+            </div>
             <div class="stat-tiles" id="distributionStats"></div>
             <div class="chart-wrapper">
                 <div class="axis-crop-badge" id="distAxisCropBadge"></div>
@@ -348,7 +410,13 @@
         </div>
 
         <div class="chart-section" id="sectionDelta" hidden>
-            <h3 data-i18n="deltaTitle">相邻偏移量差值分布</h3>
+            <div class="chart-heading">
+                <h3 data-i18n="deltaTitle">相邻偏移量差值分布</h3>
+                <label class="axis-full-toggle" data-i18n-title="showOutOfRangeHint">
+                    <input type="checkbox" data-show-out-of-range="delta">
+                    <span data-i18n="showOutOfRange">显示超出范围的点</span>
+                </label>
+            </div>
             <div class="stat-tiles" id="deltaStats"></div>
             <div class="chart-wrapper">
                 <div class="axis-crop-badge" id="deltaAxisCropBadge"></div>
@@ -398,6 +466,79 @@
             </div>
         </div>
 
+        <div class="chart-section" id="sectionHurst" hidden>
+            <h3 data-i18n="hurstTitle">Hurst / DFA 长程相关性</h3>
+            <div class="stat-tiles" id="hurstStats"></div>
+            <div class="chart-wrapper">
+                <div class="chart-canvas-box">
+                    <canvas id="hurstChart"></canvas>
+                </div>
+            </div>
+            <div class="forensic-note" id="hurstNote"></div>
+        </div>
+
+        <div class="chart-section" id="sectionSpectrum" hidden>
+            <h3 data-i18n="spectrumTitle">偏移频谱</h3>
+            <div class="stat-tiles" id="spectrumStats"></div>
+            <div class="chart-wrapper">
+                <div class="chart-canvas-box">
+                    <canvas id="spectrumChart"></canvas>
+                </div>
+            </div>
+            <div class="forensic-note" id="spectrumNote"></div>
+        </div>
+
+        <div class="chart-section" id="sectionFatigue" hidden>
+            <h3 data-i18n="fatigueTitle">连击疲劳曲线</h3>
+            <div class="stat-tiles" id="fatigueStats"></div>
+            <div class="chart-wrapper">
+                <div class="chart-canvas-box">
+                    <canvas id="fatigueChart"></canvas>
+                </div>
+            </div>
+            <div class="forensic-note" id="fatigueNote"></div>
+        </div>
+
+        <div class="chart-section" id="sectionCompensation" hidden>
+            <h3 data-i18n="compensationTitle">去趋势 lag-1 补偿</h3>
+            <div class="stat-tiles" id="compensationStats"></div>
+            <div class="chart-wrapper">
+                <div class="chart-canvas-box">
+                    <canvas id="compensationChart"></canvas>
+                </div>
+            </div>
+            <div class="forensic-note" id="compensationNote"></div>
+        </div>
+
+        <div class="chart-section" id="sectionStability" hidden>
+            <h3 data-i18n="stabilityTitle">滚动 UR 稳定性</h3>
+            <div class="stat-tiles" id="stabilityStats"></div>
+            <div class="chart-wrapper">
+                <div class="chart-canvas-box">
+                    <canvas id="stabilityChart"></canvas>
+                </div>
+            </div>
+            <div class="forensic-note" id="stabilityNote"></div>
+        </div>
+
+        <div class="chart-section" id="sectionCompare" hidden>
+            <h3 data-i18n="compareTitle">双回放对比</h3>
+            <div class="forensic-compare-controls">
+                <label class="btn-sm forensic-file-button">
+                    <input type="file" id="forensicCompareInput" accept=".json,.tlog,.tlog.gz,.gz,.crpl2">
+                    <span data-i18n="comparePick">选择第二份日志</span>
+                </label>
+                <span class="forensic-compare-name" id="forensicCompareName"></span>
+            </div>
+            <div class="stat-tiles" id="compareStats"></div>
+            <div class="chart-wrapper">
+                <div class="chart-canvas-box">
+                    <canvas id="compareChart"></canvas>
+                </div>
+            </div>
+            <div class="forensic-note" id="compareNote"></div>
+        </div>
+
     </div>
 
     <div class="tip">
@@ -405,6 +546,132 @@
         <a href="https://github.com/SleepingCui/TimingShow" target="_blank">TimingShow</a> | <a href="https://github.com/SleepingCui/adofai_offset_analyzer" target="_blank">Website source</a> | <a href="convert.html" target="_blank">Binary Converter</a>
     </div>
 </div>
+</main>
+
+<div class="settings-backdrop" id="settingsBackdrop" hidden></div>
+<aside class="settings-panel" id="settingsPanel" aria-labelledby="settingsTitle" hidden>
+    <div class="settings-head">
+        <div>
+            <h2 class="settings-title" id="settingsTitle" data-i18n="settingsTitle">设置</h2>
+            <p class="settings-subtitle" data-i18n="settingsSubtitle">只保存在这台设备的浏览器中</p>
+        </div>
+        <button class="icon-btn" id="settingsClose" type="button" data-i18n-title="settingsClose" aria-label="关闭设置">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                <path d="M6 6l12 12M18 6L6 18"></path>
+            </svg>
+        </button>
+    </div>
+    <div class="settings-body">
+        <details class="settings-group" open>
+            <summary>
+                <span class="settings-group-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 3a9 9 0 0 0 0 18c1.4 0 2-0.8 2-1.8 0-0.8-0.5-1.4-0.5-2.2 0-1.1 0.9-2 2-2H18a4 4 0 0 0 4-4c0-4.4-4.5-8-10-8z"></path></svg>
+                </span>
+                <span data-i18n="settingsAppearance">外观</span>
+            </summary>
+            <div class="settings-group-body">
+                <div class="settings-field">
+                    <div class="settings-field-label" data-i18n="settingsTheme">主题</div>
+                    <div class="settings-segment" role="group" data-i18n-title="settingsTheme" aria-label="主题">
+                        <button type="button" class="settings-segment-btn" data-settings-theme="dark">
+                            <span data-i18n="settingsDark">深色</span>
+                        </button>
+                        <button type="button" class="settings-segment-btn" data-settings-theme="light">
+                            <span data-i18n="settingsLight">浅色</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="settings-field">
+                    <div class="settings-field-label" data-i18n="settingsAccent">强调色</div>
+                    <div class="accent-swatches" id="accentSwatches"></div>
+                    <div class="accent-custom-row">
+                        <label class="accent-custom-label" for="accentCustom">
+                            <span data-i18n="settingsAccentCustom">自定义颜色</span>
+                            <input type="color" id="accentCustom">
+                        </label>
+                        <button class="btn-sm" id="accentReset" type="button" data-i18n="settingsAccentReset">恢复默认</button>
+                    </div>
+                    <p class="settings-hint" data-i18n="settingsAccentHint">强调色会同时应用到按钮、图表辅助线与 XACC 显示。</p>
+                </div>
+            </div>
+        </details>
+
+        <details class="settings-group">
+            <summary>
+                <span class="settings-group-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h10"></path><circle cx="18" cy="17" r="2"></circle></svg>
+                </span>
+                <span data-i18n="settingsAdvanced">高级</span>
+            </summary>
+            <div class="settings-group-body">
+                <label class="settings-toggle-row">
+                    <span class="settings-toggle-text">
+                        <strong data-i18n="settingsRememberCharts">记住图表显示状态</strong>
+                        <small data-i18n="settingsRememberChartsHint">下次打开时恢复已勾选的图表、顺序与轴裁剪选项。</small>
+                    </span>
+                    <input type="checkbox" id="settingsRememberCharts">
+                </label>
+                <label class="settings-toggle-row">
+                    <span class="settings-toggle-text">
+                        <strong data-i18n="settingsChartTwoColumns">双列图表</strong>
+                        <small data-i18n="settingsChartTwoColumnsHint">宽屏时每行显示两张图表；关闭时保持单列。</small>
+                    </span>
+                    <input type="checkbox" id="settingsChartTwoColumns">
+                </label>
+                <label class="settings-toggle-row">
+                    <span class="settings-toggle-text">
+                        <strong data-i18n="settingsAutoExpandMeta">自动展开文件详情</strong>
+                        <small data-i18n="settingsAutoExpandMetaHint">导入后直接显示版本、BPM、判定难度等完整信息。</small>
+                    </span>
+                    <input type="checkbox" id="settingsAutoExpandMeta">
+                </label>
+            </div>
+        </details>
+
+        <details class="settings-group">
+            <summary>
+                <span class="settings-group-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3z"></path><path d="M4 7v5c0 1.7 3.6 3 8 3s8-1.3 8-3V7"></path><path d="M4 12v5c0 1.7 3.6 3 8 3s8-1.3 8-3v-5"></path></svg>
+                </span>
+                <span data-i18n="settingsStorage">存储</span>
+            </summary>
+            <div class="settings-group-body">
+                <label class="settings-toggle-row">
+                    <span class="settings-toggle-text">
+                        <strong data-i18n="settingsHistoryEnabled">记录分析历史</strong>
+                        <small data-i18n="settingsHistoryEnabledHint">关闭后新的导入只显示在当前页面，不写入历史栏。</small>
+                    </span>
+                    <input type="checkbox" id="settingsHistoryEnabled">
+                </label>
+                <label class="settings-toggle-row">
+                    <span class="settings-toggle-text">
+                        <strong data-i18n="settingsStoreHistoryFiles">保存日志副本</strong>
+                        <small data-i18n="settingsStoreHistoryFilesHint">把原文件存进浏览器，之后可从历史栏直接重新分析；关闭后只保存统计指标。</small>
+                    </span>
+                    <input type="checkbox" id="settingsStoreHistoryFiles">
+                </label>
+                <div class="settings-field settings-inline-field">
+                    <label class="settings-field-label" for="settingsHistoryLimit" data-i18n="settingsHistoryLimit">历史条数上限</label>
+                    <select id="settingsHistoryLimit" class="lang-select">
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                        <option value="200">200</option>
+                    </select>
+                </div>
+                <div class="storage-meter" aria-hidden="true"><div id="settingsStorageBar"></div></div>
+                <p class="settings-hint" id="settingsStorageText"></p>
+                <div class="settings-actions">
+                    <button class="btn-sm" id="settingsClearFiles" type="button" data-i18n="settingsClearFiles">删除日志副本</button>
+                    <button class="btn-sm btn-danger" id="settingsClearHistory" type="button" data-i18n="settingsClearHistory">清空历史</button>
+                </div>
+                <button class="btn-sm settings-reset" id="settingsReset" type="button" data-i18n="settingsReset">恢复默认设置</button>
+            </div>
+        </details>
+
+        <p class="settings-foot" data-i18n="settingsSavedHint">设置保存后立即生效，不会上传到任何服务器。</p>
+    </div>
+</aside>
 
 <div class="chart-config" id="chartConfig">
     <div class="chart-config-panel" id="chartConfigPanel" hidden>
@@ -432,6 +699,7 @@
      where module imports and fetch are blocked. They share one global scope and the
      order below is the dependency order, so it must not be shuffled. -->
 <script src="js/core.js"></script>
+<script src="js/settings.js"></script>
 <script src="js/stats.js"></script>
 <script src="js/charts-timing.js"></script>
 <script src="js/charts-scatter.js"></script>
@@ -440,6 +708,9 @@
 <script src="js/charts-rolling.js"></script>
 <script src="js/charts-tempo.js"></script>
 <script src="js/charts-heatmap.js"></script>
+<script src="js/stats-timing.js"></script>
+<script src="js/charts-forensics.js"></script>
+<script src="js/history.js"></script>
 <script src="js/data.js"></script>
 <script src="js/log-parser.js"></script>
 <script src="js/app.js"></script>

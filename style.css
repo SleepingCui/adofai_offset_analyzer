@@ -30,6 +30,8 @@ a row shout louder than anything on the page needs to */
 --radius-md: 10px;
 --radius-lg: 14px;
 --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+--rail-width: 300px;
+--primary-btn-text: #ffffff;
 color-scheme: dark;
 
 /* Chart canvases: Chart.js cannot read custom properties, so core.js mirrors
@@ -108,6 +110,7 @@ color-scheme: light;
 --link-color: #0969da;
 --primary-btn-bg: #2e7d32;
 --primary-btn-hover: #1b5e20;
+--primary-btn-text: #ffffff;
 --danger-soft-bg: #ffebe9;
 --danger-soft-text: #cf222e;
 --chart-axis-title: #57606a;
@@ -173,16 +176,27 @@ background-color: var(--bg-color);
 color: var(--text-color);
 transition: background-color 0.2s ease, color 0.2s ease;
 margin: 0;
-padding: 32px 16px;
-display: flex;
-flex-direction: column;
-align-items: center;
+padding: 0;
+min-height: 100vh;
 -webkit-font-smoothing: antialiased;
+}
+
+/* The history rail is a floating fixed panel, so the page column reserves its
+   width plus a small gutter only while the rail is open. */
+.app-main {
+min-height: 100vh;
+box-sizing: border-box;
+padding: 32px 16px;
+transition: padding-left 0.25s ease;
+}
+body.rail-open .app-main {
+padding-left: calc(var(--rail-width) + 48px);
 }
 
 .container {
 width: 100%;
-max-width: 1360px;
+max-width: 1680px;
+margin: 0 auto;
 background: var(--panel-color);
 padding: 32px;
 border-radius: var(--radius-lg);
@@ -247,7 +261,7 @@ display: inline-block;
 
 .btn {
 background-color: var(--primary-btn-bg);
-color: #ffffff;
+color: var(--primary-btn-text, #ffffff);
 padding: 10px 18px;
 border-radius: var(--radius-sm);
 font-weight: 600;
@@ -558,69 +572,86 @@ line-height: 1.2;
 /* STREAMING_CHUNK:Styling margin counts box and judgements breakdown... */
 .margin-counts-box {
 display: flex;
-flex-wrap: wrap;
+flex-wrap: nowrap;
 align-items: center;
 justify-content: space-between;
-gap: 20px;
-margin-bottom: 24px;
-padding: 20px 24px;
+gap: 12px;
+margin-bottom: 18px;
+padding: 12px 16px;
 background: var(--card-color);
 border-radius: var(--radius-md);
 border: 1px solid var(--card-border);
 }
 
+/* The counts fill the free width in one compact row; XACC stays pinned to
+   the right instead of wrapping onto a second line. */
 .numbers-group {
 display: flex;
+flex: 1 1 auto;
 flex-wrap: wrap;
-gap: 24px;
+justify-content: space-between;
+gap: 4px 6px;
 align-items: center;
+min-width: 0;
 }
 
 .pure-number {
-font-size: 1.4rem;
+font-size: 1.1rem;
 font-weight: 600;
-line-height: 1.2;
+line-height: 1.15;
 display: inline-flex;
 flex-direction: column;
 align-items: center;
-min-width: 64px;
+min-width: 56px;
+font-variant-numeric: tabular-nums;
 }
 .pure-number-label {
-font-size: 0.7rem;
+font-size: 0.64rem;
 font-weight: 600;
-line-height: 1.2;
+line-height: 1.15;
 white-space: nowrap;
-margin-bottom: 6px;
+margin-bottom: 2px;
 color: var(--text-muted);
 }
 .pure-number-value {
-font-size: 1.35rem;
-line-height: 1.2;
+font-size: 1.1rem;
+line-height: 1.15;
 font-weight: 700;
 }
 
 .xacc-display {
-font-size: 1.6rem;
+flex: 0 0 auto;
+font-size: 1.05rem;
+line-height: 1.2;
 font-weight: 700;
 color: var(--xacc-color);
 white-space: nowrap;
 background: var(--xacc-bg);
-padding: 8px 16px;
+padding: 5px 10px;
 border-radius: var(--radius-sm);
 border: 1px solid var(--xacc-border);
+font-variant-numeric: tabular-nums;
 }
 
 /* STREAMING_CHUNK:Styling charts container and chart sections... */
 .charts-container {
-display: flex;
-flex-direction: column;
+display: grid;
+/* Single column by default. The optional two-column layout is enabled from
+   Settings; auto-fit keeps one chart full-width and stops at two columns. */
+grid-template-columns: 1fr;
+align-items: start;
 gap: 24px;
 margin-bottom: 24px;
+}
+
+body.charts-two-column .charts-container {
+grid-template-columns: repeat(auto-fit, minmax(560px, 1fr));
 }
 
 .chart-section {
 position: relative;
 width: 100%;
+min-width: 0;
 }
 
 .chart-section h3 {
@@ -629,6 +660,40 @@ font-size: 1.05rem;
 color: var(--text-muted);
 text-align: center;
 font-weight: 600;
+}
+
+/* A chart title with a per-chart view switch on its right. The one-column
+   middle keeps the heading optically centred in the section, not in the space
+   the switch leaves over. */
+.chart-heading {
+display: grid;
+grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+align-items: center;
+margin-bottom: 10px;
+}
+.chart-heading h3 {
+grid-column: 2;
+margin: 0;
+}
+.chart-heading .axis-full-toggle {
+grid-column: 3;
+justify-self: end;
+}
+.axis-full-toggle {
+display: inline-flex;
+align-items: center;
+gap: 6px;
+color: var(--text-muted);
+font-size: 0.78rem;
+font-weight: 500;
+white-space: nowrap;
+cursor: pointer;
+user-select: none;
+}
+.axis-full-toggle input {
+margin: 0;
+accent-color: var(--accent-color);
+cursor: pointer;
 }
 
 .chart-wrapper {
@@ -1261,7 +1326,7 @@ color: var(--text-muted);
 margin-top: 16px;
 font-size: 0.85rem;
 color: var(--text-faint);
-text-align: center;
+text-align: center;5
 padding: 10px 0;
 border-top: 1px solid var(--hairline);
 }
@@ -1276,14 +1341,18 @@ text-decoration: underline;
 
 /* STREAMING_CHUNK:Applying responsive media queries... */
 @media (max-width: 1200px) {
-.charts-container {
+.charts-container,
+body.charts-two-column .charts-container {
 grid-template-columns: 1fr;
 }
 }
 
 @media (max-width: 768px) {
-body {
+.app-main {
 padding: 12px 8px;
+}
+body.rail-open .app-main {
+padding-left: 8px;
 }
 .container {
 padding: 16px;
@@ -1311,6 +1380,18 @@ right: 10px;
 .container {
 padding-top: 68px;
 }
+.margin-counts-box {
+flex-wrap: wrap;
+padding: 10px 12px;
+gap: 8px;
+}
+.numbers-group {
+flex-basis: 100%;
+gap: 6px;
+}
+.xacc-display {
+margin-left: auto;
+}
 .scatter-filter-container,
 .xacc-filter-container,
 .combo-filter-container,
@@ -1327,5 +1408,748 @@ bottom: 12px;
 .chart-config-panel {
 min-width: 180px;
 max-height: 50vh;
+}
+.chart-heading {
+grid-template-columns: 1fr;
+justify-items: center;
+gap: 6px;
+}
+.chart-heading h3,
+.chart-heading .axis-full-toggle {
+grid-column: 1;
+}
+.chart-heading .axis-full-toggle {
+justify-self: center;
+}
+}
+
+/* STREAMING_CHUNK:Forensic panels -- notes, replay comparison, history... */
+.forensic-note {
+margin-top: 10px;
+font-size: 0.78rem;
+line-height: 1.55;
+color: var(--text-faint);
+text-align: center;
+}
+
+.forensic-intro {
+margin: 0 0 12px 0;
+font-size: 0.82rem;
+line-height: 1.55;
+color: var(--text-faint);
+}
+
+.forensic-compare-controls {
+display: flex;
+align-items: center;
+gap: 12px;
+flex-wrap: wrap;
+margin-bottom: 10px;
+}
+
+.forensic-file-button {
+display: inline-flex;
+align-items: center;
+margin: 0;
+cursor: pointer;
+}
+
+.forensic-file-button input[type="file"] {
+display: none;
+}
+
+.forensic-compare-name {
+font-size: 0.8rem;
+color: var(--text-muted);
+overflow: hidden;
+text-overflow: ellipsis;
+white-space: nowrap;
+max-width: 60%;
+}
+
+.forensic-history-actions {
+display: flex;
+justify-content: flex-end;
+margin-bottom: 8px;
+}
+
+.forensic-history-empty {
+padding: 18px;
+text-align: center;
+font-size: 0.84rem;
+color: var(--text-faint);
+border: 1px dashed var(--hairline);
+border-radius: var(--radius-md);
+}
+
+.forensic-table-wrap {
+max-height: 420px;
+overflow: auto;
+border: 1px solid var(--hairline);
+border-radius: var(--radius-md);
+background: var(--chart-surface);
+}
+
+.forensic-table {
+width: 100%;
+border-collapse: collapse;
+font-size: 0.8rem;
+}
+
+.forensic-table th,
+.forensic-table td {
+padding: 7px 10px;
+text-align: left;
+white-space: nowrap;
+}
+
+.forensic-table th {
+position: sticky;
+top: 0;
+background: var(--panel-color);
+color: var(--text-muted);
+font-weight: 600;
+border-bottom: 1px solid var(--card-border);
+z-index: 1;
+}
+
+.forensic-table td {
+border-bottom: 1px solid var(--hairline);
+color: var(--text-strong);
+font-variant-numeric: tabular-nums;
+}
+
+.forensic-table td:nth-child(2) {
+max-width: 240px;
+overflow: hidden;
+text-overflow: ellipsis;
+}
+
+.forensic-table tbody tr:hover td {
+background: var(--control-bg);
+}
+
+/* STREAMING_CHUNK:History rail, settings drawer, and the app shell... */
+/* The rail is a sibling of .app-main, not a child of .container: it is a
+   floating fixed card with its own scroll area. On wide screens the main
+   column reserves its width plus a gutter; below 1100px the rail overlays the
+   page with a scrim. */
+.history-rail {
+visibility: hidden;
+position: fixed;
+top: 16px;
+bottom: 16px;
+left: 16px;
+z-index: 80;
+width: var(--rail-width);
+max-width: calc(100vw - 32px);
+display: flex;
+flex-direction: column;
+gap: 14px;
+padding: 22px 18px 16px;
+box-sizing: border-box;
+background: var(--panel-color);
+border: 1px solid var(--card-border);
+border-radius: var(--radius-lg);
+box-shadow: var(--floating-shadow);
+transform: translateX(calc(-100% - 24px));
+transition: transform 0.25s ease, visibility 0s linear 0.25s;
+overflow: hidden;
+}
+body.rail-open .history-rail {
+visibility: visible;
+transform: translateX(0);
+transition: transform 0.25s ease, visibility 0s;
+}
+
+.history-rail-head {
+display: flex;
+align-items: flex-start;
+justify-content: space-between;
+gap: 10px;
+}
+.history-rail-title {
+margin: 0;
+font-size: 1.05rem;
+letter-spacing: -0.01em;
+}
+.history-rail-subtitle {
+margin: 3px 0 0;
+font-size: 0.74rem;
+line-height: 1.4;
+color: var(--text-faint);
+}
+.history-rail-close {
+width: 34px;
+min-width: 34px;
+height: 34px;
+padding: 0;
+}
+.history-rail-close svg {
+width: 15px;
+height: 15px;
+}
+
+.history-rail-actions {
+display: flex;
+align-items: stretch;
+gap: 8px;
+}
+.history-rail-actions .btn-sm {
+flex: 0 0 auto;
+padding: 9px 12px;
+}
+.history-import-btn {
+position: relative;
+overflow: hidden;
+flex: 1;
+gap: 7px;
+padding: 9px 12px;
+font-size: 0.8rem;
+}
+.history-import-btn svg {
+width: 15px;
+height: 15px;
+flex: none;
+}
+.history-import-btn input[type="file"] {
+position: absolute;
+inset: 0;
+width: 100%;
+height: 100%;
+opacity: 0;
+cursor: pointer;
+font-size: 100px;
+}
+
+.history-rail-meta {
+display: flex;
+justify-content: space-between;
+gap: 8px;
+font-size: 0.72rem;
+color: var(--text-faint);
+}
+
+.history-rail-list {
+display: flex;
+flex-direction: column;
+gap: 8px;
+flex: 1;
+min-height: 0;
+overflow-y: auto;
+overscroll-behavior: contain;
+padding-right: 2px;
+scrollbar-width: thin;
+}
+.history-card {
+display: flex;
+flex-direction: column;
+gap: 6px;
+width: 100%;
+padding: 10px 12px;
+box-sizing: border-box;
+text-align: left;
+font-family: inherit;
+background: var(--card-color);
+border: 1px solid var(--hairline);
+border-radius: var(--radius-md);
+color: var(--text-color);
+cursor: pointer;
+transition: var(--transition);
+}
+.history-card:hover {
+border-color: var(--card-border);
+background: var(--control-bg);
+transform: translateY(-1px);
+}
+.history-card.is-active {
+border-color: var(--accent-color);
+box-shadow: inset 0 0 0 1px var(--accent-color);
+}
+.history-card:disabled {
+cursor: default;
+opacity: 0.68;
+}
+.history-card:disabled:hover {
+transform: none;
+background: var(--card-color);
+border-color: var(--hairline);
+}
+.history-card-top {
+display: flex;
+align-items: center;
+justify-content: space-between;
+gap: 8px;
+}
+.history-source {
+display: inline-flex;
+flex: 0 0 auto;
+align-items: center;
+padding: 2px 6px;
+border-radius: 999px;
+font-size: 0.62rem;
+font-weight: 700;
+letter-spacing: 0.02em;
+white-space: nowrap;
+}
+.history-source.source-import {
+color: #4dccff;
+background: rgba(77, 204, 255, 0.14);
+}
+.history-source.source-server {
+color: #60ff4e;
+background: rgba(96, 255, 78, 0.12);
+}
+.history-source.source-legacy {
+color: var(--text-muted);
+background: var(--control-bg);
+}
+html[data-theme="light"] .history-source.source-import {
+color: #0969da;
+background: rgba(9, 105, 218, 0.1);
+}
+html[data-theme="light"] .history-source.source-server {
+color: #2e7d32;
+background: rgba(46, 125, 50, 0.12);
+}
+.history-card-date {
+min-width: 0;
+font-size: 0.64rem;
+color: var(--text-faint);
+white-space: nowrap;
+overflow: hidden;
+text-overflow: ellipsis;
+}
+.history-card-name {
+font-size: 0.82rem;
+font-weight: 600;
+line-height: 1.35;
+overflow: hidden;
+text-overflow: ellipsis;
+white-space: nowrap;
+}
+.history-card-song {
+font-size: 0.7rem;
+color: var(--text-muted);
+overflow: hidden;
+text-overflow: ellipsis;
+white-space: nowrap;
+}
+.history-card-stats {
+display: flex;
+flex-wrap: wrap;
+gap: 3px 10px;
+font-size: 0.68rem;
+font-variant-numeric: tabular-nums;
+color: var(--text-muted);
+}
+.history-card-state {
+font-size: 0.65rem;
+color: var(--text-faint);
+}
+.history-card-state.is-current {
+color: var(--accent-color);
+font-weight: 700;
+}
+.history-rail-empty {
+padding: 26px 12px;
+text-align: center;
+font-size: 0.8rem;
+line-height: 1.5;
+color: var(--text-faint);
+border: 1px dashed var(--hairline);
+border-radius: var(--radius-md);
+}
+.history-disabled-hint {
+margin: 0;
+padding: 8px 10px;
+font-size: 0.7rem;
+line-height: 1.45;
+color: var(--warning-color);
+background: var(--warning-soft-bg);
+border: 1px solid var(--warning-soft-border);
+border-radius: var(--radius-sm);
+}
+.history-rail-foot {
+padding-top: 10px;
+border-top: 1px solid var(--hairline);
+font-size: 0.68rem;
+color: var(--text-faint);
+font-variant-numeric: tabular-nums;
+}
+
+.rail-backdrop {
+display: none;
+position: fixed;
+inset: 0;
+z-index: 70;
+background: rgba(0, 0, 0, 0.52);
+backdrop-filter: blur(1px);
+}
+
+/* Toolbar state: the history icon reads as pressed while the rail is open. */
+body.rail-open #historyToggle {
+color: var(--accent-color);
+border-color: var(--accent-color);
+}
+
+/* Settings drawer */
+.settings-backdrop {
+position: fixed;
+inset: 0;
+z-index: 90;
+background: rgba(0, 0, 0, 0.5);
+backdrop-filter: blur(1px);
+}
+.settings-panel {
+position: fixed;
+top: 0;
+right: 0;
+bottom: 0;
+z-index: 95;
+width: min(400px, 100vw);
+display: flex;
+flex-direction: column;
+box-sizing: border-box;
+background: var(--panel-color);
+border-left: 1px solid var(--hairline);
+box-shadow: var(--floating-shadow);
+animation: settings-slide-in 0.22s ease;
+}
+@keyframes settings-slide-in {
+from { transform: translateX(20px); opacity: 0.4; }
+to { transform: translateX(0); opacity: 1; }
+}
+.settings-head {
+display: flex;
+align-items: flex-start;
+justify-content: space-between;
+gap: 12px;
+padding: 22px 20px 16px;
+border-bottom: 1px solid var(--hairline);
+}
+.settings-title {
+margin: 0;
+font-size: 1.1rem;
+letter-spacing: -0.01em;
+}
+.settings-subtitle {
+margin: 4px 0 0;
+font-size: 0.74rem;
+color: var(--text-faint);
+}
+.settings-head .icon-btn {
+width: 34px;
+min-width: 34px;
+height: 34px;
+padding: 0;
+}
+.settings-head .icon-btn svg {
+width: 15px;
+height: 15px;
+}
+.settings-body {
+flex: 1;
+overflow-y: auto;
+padding: 16px 20px 24px;
+scrollbar-width: thin;
+}
+
+.settings-group {
+margin-bottom: 12px;
+background: var(--card-color);
+border: 1px solid var(--hairline);
+border-radius: var(--radius-md);
+overflow: hidden;
+}
+.settings-group summary {
+display: flex;
+align-items: center;
+gap: 10px;
+padding: 12px 14px;
+font-size: 0.88rem;
+font-weight: 600;
+cursor: pointer;
+list-style: none;
+user-select: none;
+}
+.settings-group summary::-webkit-details-marker {
+display: none;
+}
+.settings-group summary::after {
+content: "+";
+margin-left: auto;
+font-size: 1rem;
+font-weight: 400;
+color: var(--text-muted);
+}
+.settings-group[open] summary::after {
+content: "−";
+}
+.settings-group summary:hover {
+background: var(--control-bg);
+}
+.settings-group-icon {
+display: inline-flex;
+color: var(--text-muted);
+}
+.settings-group-icon svg {
+width: 17px;
+height: 17px;
+}
+.settings-group-body {
+padding: 2px 14px 14px;
+border-top: 1px solid var(--hairline);
+}
+.settings-field {
+padding: 11px 0;
+}
+.settings-field + .settings-field {
+border-top: 1px solid var(--hairline);
+}
+.settings-field-label {
+display: block;
+margin-bottom: 8px;
+font-size: 0.78rem;
+font-weight: 600;
+color: var(--text-strong);
+}
+.settings-inline-field {
+display: flex;
+align-items: center;
+justify-content: space-between;
+gap: 12px;
+}
+.settings-inline-field .settings-field-label {
+margin-bottom: 0;
+}
+.settings-inline-field .lang-select {
+width: auto;
+flex: 0 0 auto;
+padding: 6px 10px;
+font-size: 0.8rem;
+}
+.settings-hint {
+margin: 8px 0 0;
+font-size: 0.68rem;
+line-height: 1.5;
+color: var(--text-faint);
+}
+
+.settings-segment {
+display: flex;
+gap: 4px;
+padding: 3px;
+background: var(--control-bg);
+border: 1px solid var(--hairline);
+border-radius: var(--radius-sm);
+}
+.settings-segment-btn {
+flex: 1;
+padding: 7px 10px;
+border: none;
+border-radius: 4px;
+background: transparent;
+color: var(--text-muted);
+font-family: inherit;
+font-size: 0.78rem;
+cursor: pointer;
+transition: var(--transition);
+}
+.settings-segment-btn:hover {
+color: var(--text-color);
+}
+.settings-segment-btn.is-active {
+background: var(--panel-color);
+color: var(--accent-color);
+font-weight: 700;
+box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+}
+
+.accent-swatches {
+display: flex;
+flex-wrap: wrap;
+gap: 9px;
+}
+.accent-swatch {
+width: 26px;
+height: 26px;
+padding: 0;
+border: 1px solid var(--card-border);
+border-radius: 50%;
+cursor: pointer;
+transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.accent-swatch:hover {
+transform: scale(1.1);
+}
+.accent-swatch.is-selected {
+box-shadow: 0 0 0 2px var(--panel-color), 0 0 0 4px var(--accent-color);
+}
+.accent-swatch-default {
+background:
+linear-gradient(135deg, transparent 45%, var(--danger-soft-text) 45%, var(--danger-soft-text) 55%, transparent 55%),
+linear-gradient(135deg, var(--card-color), var(--control-bg));
+}
+.accent-custom-row {
+display: flex;
+align-items: center;
+justify-content: space-between;
+gap: 10px;
+margin-top: 11px;
+}
+.accent-custom-label {
+display: inline-flex;
+align-items: center;
+gap: 8px;
+font-size: 0.72rem;
+color: var(--text-muted);
+cursor: pointer;
+}
+#accentCustom {
+width: 38px;
+height: 26px;
+padding: 0;
+border: 1px solid var(--card-border);
+border-radius: 5px;
+background: transparent;
+cursor: pointer;
+}
+
+.settings-toggle-row {
+display: flex;
+align-items: flex-start;
+justify-content: space-between;
+gap: 14px;
+padding: 11px 0;
+cursor: pointer;
+}
+.settings-toggle-row + .settings-toggle-row {
+border-top: 1px solid var(--hairline);
+}
+.settings-toggle-text {
+display: flex;
+flex-direction: column;
+gap: 3px;
+}
+.settings-toggle-text strong {
+font-size: 0.78rem;
+font-weight: 600;
+color: var(--text-strong);
+}
+.settings-toggle-text small {
+font-size: 0.67rem;
+line-height: 1.45;
+color: var(--text-faint);
+}
+.settings-toggle-row input[type="checkbox"] {
+flex: none;
+width: 18px;
+height: 18px;
+margin-top: 2px;
+accent-color: var(--accent-color);
+cursor: pointer;
+}
+
+.storage-meter {
+height: 6px;
+margin-top: 12px;
+background: var(--control-bg);
+border-radius: 999px;
+overflow: hidden;
+}
+.storage-meter > div {
+height: 100%;
+width: 0;
+background: var(--accent-color);
+border-radius: inherit;
+transition: width 0.25s ease;
+}
+#settingsStorageText {
+min-height: 1.4em;
+font-variant-numeric: tabular-nums;
+}
+.settings-actions {
+display: flex;
+gap: 8px;
+margin-top: 10px;
+}
+.settings-actions .btn-sm {
+flex: 1;
+}
+.btn-sm.btn-danger {
+color: var(--danger-soft-text);
+border-color: var(--danger-soft-bg);
+background: var(--danger-soft-bg);
+}
+.btn-sm.btn-danger:hover {
+color: #ffffff;
+background: #b3261e;
+}
+.settings-reset {
+width: 100%;
+margin-top: 8px;
+}
+.settings-foot {
+margin: 18px 0 0;
+text-align: center;
+font-size: 0.66rem;
+line-height: 1.5;
+color: var(--text-faint);
+}
+
+@media (max-width: 1100px) {
+body.rail-open .app-main {
+padding-left: 16px;
+}
+.history-rail {
+top: 12px;
+bottom: 12px;
+left: 12px;
+width: min(86vw, 340px);
+box-shadow: var(--floating-shadow);
+}
+.rail-backdrop:not([hidden]) {
+display: block;
+}
+}
+
+@media (max-width: 768px) {
+.app-main {
+padding: 12px 8px;
+}
+body.rail-open .app-main {
+padding-left: 8px;
+}
+.history-rail {
+top: 8px;
+bottom: 8px;
+left: 8px;
+width: min(88vw, 340px);
+}
+.page-toolbar {
+top: 10px;
+right: 10px;
+gap: 6px;
+}
+.page-toolbar .icon-btn {
+height: 36px;
+min-width: 36px;
+}
+.page-toolbar #themeToggle {
+width: 36px;
+min-width: 36px;
+}
+.history-import-btn {
+width: auto;
+}
+.settings-panel {
+width: 100%;
+}
+.settings-head {
+padding: 16px 16px 12px;
+}
+.settings-body {
+padding: 12px 16px 20px;
 }
 }

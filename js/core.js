@@ -22,8 +22,11 @@ let currentLang = getPreferredLanguage();
 // currently active, so these are not translated.
 const LANGUAGE_LABELS = { zh: '中文', en: 'English', kr: '한국어' };
 let currentMetaData = null;
+// The name of the imported file, kept for the history snapshot: two runs of the
+// same chart usually share songName, and the file name is what tells them apart.
+let currentLogFileName = '';
 let metaExpanded = false;
-let minOffsetFilter = null;5
+let minOffsetFilter = null;
 let maxOffsetFilter = null;
 let ignoreOutliers = false;
 let pointSize = 2;
@@ -33,6 +36,7 @@ let pointSize = 2;
 // cannot read custom properties, so the handful of colors it needs are mirrored
 // into CHART_COLORS here and refreshed whenever the theme changes.
 const THEME_STORAGE_KEY = 'adofai-theme';
+const CHART_STATE_KEY = 'adofai-chart-state-v1';
 
 function readThemePreference() {
     try {
@@ -148,6 +152,7 @@ function setTheme(theme, persist) {
     // Every render function destroys and rebuilds its chart, so a re-render is
     // all it takes for the canvases to pick up the new palette.
     if (globalOffsets.length > 0) updateAllCharts();
+    if (typeof syncSettingsControls === 'function') syncSettingsControls();
 }
 
 function toggleTheme() {
@@ -272,10 +277,14 @@ function updateUnitControl() {
     if (degOption) degOption.disabled = !unitAvailability.deg;
 }
 
-function buildPlayerRecords(unit) {
-    return globalRawPlayers.map(stream => stream
-        ? processOffsetRecords(stream.tuples, stream.timeFirst, { isAngle: logIsAngle, unit })
+function buildRecordsForStreams(rawPlayers, isAngle, unit) {
+    return rawPlayers.map(stream => stream
+        ? processOffsetRecords(stream.tuples, stream.timeFirst, { isAngle, unit })
         : []);
+}
+
+function buildPlayerRecords(unit) {
+    return buildRecordsForStreams(globalRawPlayers, logIsAngle, unit);
 }
 
 function computeUnitAvailability(players) {
@@ -355,6 +364,8 @@ function setLanguage(lang) {
 
     updateMetaInfo();
     renderChartConfigList();
+    if (typeof syncSettingsControls === 'function') syncSettingsControls();
+    if (typeof renderHistorySidebar === 'function') renderHistorySidebar();
 
     if (globalOffsets.length > 0) {
         updateAllCharts();
@@ -501,7 +512,7 @@ const CHART_SECTIONS = [
         }
     },
     {
-        key: 'heatmap', sectionId: 'sectionHeatmap', titleKey: 'heatmapTitle', defaultVisible: false,
+        key: 'heatmap', sectionId: 'sectionHeatmap', titleKey: 'heatmapTitle', defaultVisible: false, axisCrop: true,
         // Range-aware like the delta module: the cells describe the stretch on
         // screen, and a pair at the seam would otherwise measure a step across
         // two runs. The heatmap is a density, so unlike the scatter it cannot
@@ -523,7 +534,7 @@ const CHART_SECTIONS = [
     { key: 'rolling', sectionId: 'sectionRolling', titleKey: 'rollingTitle', defaultVisible: false, render: () => renderRollingChart() },
     { key: 'bpm', sectionId: 'sectionBpm', titleKey: 'bpmTitle', defaultVisible: false, render: () => renderBpmChart() },
     { key: 'floor', sectionId: 'sectionFloor', titleKey: 'floorTitle', defaultVisible: false, render: () => renderFloorChart() },
-    { key: 'returnMap', sectionId: 'sectionReturn', titleKey: 'returnTitle', defaultVisible: false, render: () => renderReturnChart() },
+    { key: 'returnMap', sectionId: 'sectionReturn', titleKey: 'returnTitle', defaultVisible: false, axisCrop: true, render: () => renderReturnChart() },
     {
         key: 'acf', sectionId: 'sectionAcf', titleKey: 'acfTitle', defaultVisible: false,
         // Sits next to the return map on purpose: that one is this chart's lag 1,
@@ -538,9 +549,9 @@ const CHART_SECTIONS = [
             if (noteEl) { noteEl.innerText = ''; noteEl.style.display = 'none'; }
         }
     },
-    { key: 'distribution', sectionId: 'sectionDistribution', titleKey: 'distTitle', defaultVisible: true, render: () => renderDistributionChart() },
+    { key: 'distribution', sectionId: 'sectionDistribution', titleKey: 'distTitle', defaultVisible: true, axisCrop: true, render: () => renderDistributionChart() },
     {
-        key: 'delta', sectionId: 'sectionDelta', titleKey: 'deltaTitle', defaultVisible: false,
+        key: 'delta', sectionId: 'sectionDelta', titleKey: 'deltaTitle', defaultVisible: false, axisCrop: true,
         // The first range-aware module: it pairs neighbours *within the
         // selection*, so a delta at the seam is never computed across the
         // boundary of what the user asked to look at.
@@ -556,10 +567,78 @@ const CHART_SECTIONS = [
     },
     { key: 'pie', sectionId: 'sectionPie', titleKey: 'pieTitle', defaultVisible: true, render: () => renderJudgementStrip() },
     { key: 'xacc', sectionId: 'sectionXacc', titleKey: 'xaccTitle', defaultVisible: true, render: () => renderXaccChart() },
-    { key: 'combo', sectionId: 'sectionCombo', titleKey: 'comboTitle', defaultVisible: false, render: () => renderComboChart() }
+    { key: 'combo', sectionId: 'sectionCombo', titleKey: 'comboTitle', defaultVisible: false, render: () => renderComboChart() },
+    // The forensic panels are deliberately opt-in: each one answers a narrow
+    // question and they would bury the timing charts if they opened with every
+    // import. They all share one cleanup hook, which owns the caches too.
+    { key: 'hurst', sectionId: 'sectionHurst', titleKey: 'hurstTitle', defaultVisible: false, render: () => renderHurstChart(), onClear: () => clearForensicPanels() },
+    { key: 'spectrum', sectionId: 'sectionSpectrum', titleKey: 'spectrumTitle', defaultVisible: false, render: () => renderSpectrumChart(), onClear: () => clearForensicPanels() },
+    { key: 'fatigue', sectionId: 'sectionFatigue', titleKey: 'fatigueTitle', defaultVisible: false, render: () => renderFatigueChart(), onClear: () => clearForensicPanels() },
+    { key: 'compensation', sectionId: 'sectionCompensation', titleKey: 'compensationTitle', defaultVisible: false, render: () => renderCompensationChart(), onClear: () => clearForensicPanels() },
+    { key: 'stability', sectionId: 'sectionStability', titleKey: 'stabilityTitle', defaultVisible: false, render: () => renderStabilityChart(), onClear: () => clearForensicPanels() },
+    { key: 'compare', sectionId: 'sectionCompare', titleKey: 'compareTitle', defaultVisible: false, render: () => renderCompareChart(), onClear: () => clearForensicPanels() }
 ];
-CHART_SECTIONS.forEach(entry => { entry.visible = entry.defaultVisible; });
+CHART_SECTIONS.forEach(entry => {
+    entry.visible = entry.defaultVisible;
+    if (entry.axisCrop) entry.showOutOfRange = false;
+});
 const DEFAULT_CHART_ORDER = CHART_SECTIONS.map(entry => entry.key);
+
+// Optional persistence for the chart picker: visibility, order, and the
+// "show out-of-range points" flags. It is off by default because most readers
+// want the default set of charts each time; settings.js owns the switch.
+function saveChartState() {
+    if (typeof appSettings === 'undefined' || !appSettings || !appSettings.rememberCharts) return;
+    const state = { order: [], visible: {}, showOutOfRange: {} };
+    CHART_SECTIONS.forEach(entry => {
+        state.order.push(entry.key);
+        state.visible[entry.key] = !!entry.visible;
+        if (entry.axisCrop) state.showOutOfRange[entry.key] = !!entry.showOutOfRange;
+    });
+    try {
+        localStorage.setItem(CHART_STATE_KEY, JSON.stringify(state));
+    } catch (err) {
+        // Storage blocked: the page keeps the current view only.
+    }
+}
+
+function applySavedChartState() {
+    if (typeof appSettings === 'undefined' || !appSettings || !appSettings.rememberCharts) return;
+    let state = null;
+    try {
+        state = JSON.parse(localStorage.getItem(CHART_STATE_KEY) || 'null');
+    } catch (err) {
+        state = null;
+    }
+    if (!state || typeof state !== 'object') return;
+
+    if (Array.isArray(state.order)) {
+        const ranked = state.order.filter(key => getChartSection(key));
+        CHART_SECTIONS.sort((a, b) => {
+            const ai = ranked.indexOf(a.key);
+            const bi = ranked.indexOf(b.key);
+            if (ai === -1 && bi === -1) return 0;
+            if (ai === -1) return 1;
+            if (bi === -1) return -1;
+            return ai - bi;
+        });
+        applyChartOrder();
+    }
+
+    CHART_SECTIONS.forEach(entry => {
+        if (state.visible && typeof state.visible[entry.key] === 'boolean') {
+            entry.visible = state.visible[entry.key];
+        }
+        if (entry.axisCrop && state.showOutOfRange
+            && typeof state.showOutOfRange[entry.key] === 'boolean') {
+            entry.showOutOfRange = state.showOutOfRange[entry.key];
+        }
+    });
+    document.querySelectorAll('input[data-show-out-of-range]').forEach(input => {
+        const entry = getChartSection(input.dataset.showOutOfRange);
+        if (entry && entry.axisCrop) input.checked = !!entry.showOutOfRange;
+    });
+}
 
 // TimingShow writes the game difficulty into every log header (JSON v9, binary
 // v10) as 0 lenient / 1 normal / 2 strict, or -1 when the run did not say. The
@@ -709,6 +788,28 @@ function setChartVisible(key, visible) {
     // the section is on screen again.
     if (visible) entry.render();
     if (key === 'scatter' && !visible) setScatterSettingsOpen(false);
+    saveChartState();
+}
+
+// Some axes are cropped to a robust range so one freak hit cannot flatten the
+// middle of a chart. These helpers let a chart opt back into its full data
+// extent; only entries marked axisCrop have anything to expand.
+function isChartShowOutOfRange(key) {
+    const entry = getChartSection(key);
+    return !!(entry && entry.axisCrop && entry.showOutOfRange);
+}
+
+function setChartShowOutOfRange(key, showOutOfRange) {
+    const entry = getChartSection(key);
+    if (!entry || !entry.axisCrop) return;
+
+    entry.showOutOfRange = !!showOutOfRange;
+    document.querySelectorAll('input[data-show-out-of-range]').forEach(input => {
+        if (input.dataset.showOutOfRange === key) input.checked = entry.showOutOfRange;
+    });
+
+    if (entry.visible && globalOffsets.length > 0) entry.render();
+    saveChartState();
 }
 
 // One place decides what is on screen. A chart section shows only when the user
@@ -774,11 +875,13 @@ function moveChartSection(key, delta) {
 
     applyChartOrder();
     renderChartConfigList();
+    saveChartState();
 }
 
 function resetChartOrder() {
     CHART_SECTIONS.sort((a, b) => DEFAULT_CHART_ORDER.indexOf(a.key) - DEFAULT_CHART_ORDER.indexOf(b.key));
     applyChartOrder();
+    saveChartState();
 }
 
 function setChartConfigOpen(open) {

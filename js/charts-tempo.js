@@ -530,7 +530,11 @@ function renderReturnChart() {
     const pairs = buildReturnPairs(globalOffsets);
     const correlation = computeCorrelation(pairs);
     const verdictKey = getReturnVerdictKey(correlation);
-    const limit = getSymmetricOffsetLimit(pairs);
+    const limit = getSymmetricOffsetLimit(pairs, isChartShowOutOfRange('returnMap'));
+    // The return map has two candidate axes: y = x (error carries over) and
+    // y = -x (error is corrected). People usually show both, scripts mostly the
+    // first. sigmaPerp / sigmaParallel quantifies how much the cloud hugs y = x.
+    const axes = typeof computeReturnAxes === 'function' ? computeReturnAxes(pairs) : null;
 
     const statsEl = document.getElementById('returnStats');
     if (statsEl) {
@@ -546,6 +550,14 @@ function renderReturnChart() {
             <div class="stat-tile">
                 <div class="label">${t('returnVerdict')}</div>
                 <div class="value">${verdictKey ? t(verdictKey) : '-'}</div>
+            </div>
+            <div class="stat-tile">
+                <div class="label">${t('returnAxisRatio')}</div>
+                <div class="value">${axes && axes.ratio !== null ? axes.ratio.toFixed(3) : '-'}</div>
+            </div>
+            <div class="stat-tile">
+                <div class="label">${t('returnOpposite')}</div>
+                <div class="value">${axes ? (axes.oppositeShare * 100).toFixed(1) + '%' : '-'}</div>
             </div>
         `;
     }
@@ -632,6 +644,21 @@ function renderReturnChart() {
                                 position: 'end',
                                 backgroundColor: 'rgba(0,0,0,0.6)',
                                 color: '#fff',
+                                font: { size: 10 }
+                            }
+                        },
+                        antiDiagonal: {
+                            type: 'line',
+                            xMin: -limit, xMax: limit, yMin: limit, yMax: -limit,
+                            borderColor: 'rgba(160, 255, 78, 0.4)',
+                            borderWidth: 1,
+                            borderDash: [4, 6],
+                            label: {
+                                display: true,
+                                content: 'y = -x',
+                                position: 'start',
+                                backgroundColor: 'rgba(0,0,0,0.55)',
+                                color: '#a0ff4e',
                                 font: { size: 10 }
                             }
                         },

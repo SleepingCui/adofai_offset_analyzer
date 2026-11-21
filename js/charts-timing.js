@@ -1,6 +1,45 @@
 // charts-timing.js -- where the offsets landed (distribution), how far each
 // hit moved from the previous one (delta) and the autocorrelation chart.
 
+// Width of the dominant histogram peak at half its height. Unlike 2.355*sigma,
+// this stays honest when the distribution is skewed or has a second hump: it
+// measures the peak that is actually on screen.
+function computeHistogramFwhm(bins) {
+    if (!Array.isArray(bins) || bins.length < 3) return null;
+    let peak = 0;
+    for (let i = 1; i < bins.length; i++) {
+        if (bins[i].count > bins[peak].count) peak = i;
+    }
+    const half = bins[peak].count / 2;
+    if (!(half > 0)) return null;
+
+    let left = null;
+    for (let i = peak; i > 0; i--) {
+        if (bins[i - 1].count < half) {
+            const low = bins[i - 1];
+            const high = bins[i];
+            const span = high.count - low.count;
+            const t = span > 0 ? (half - low.count) / span : 0;
+            left = low.center + (high.center - low.center) * t;
+            break;
+        }
+    }
+
+    let right = null;
+    for (let i = peak; i < bins.length - 1; i++) {
+        if (bins[i + 1].count < half) {
+            const high = bins[i];
+            const low = bins[i + 1];
+            const span = high.count - low.count;
+            const t = span > 0 ? (high.count - half) / span : 0;
+            right = high.center + (low.center - high.center) * t;
+            break;
+        }
+    }
+
+    return left === null || right === null ? null : right - left;
+}
+
 function renderDistributionChart() {
     if (globalOffsets.length === 0) return;
     
@@ -8,7 +47,8 @@ function renderDistributionChart() {
     const stats = calculateStatistics();
     globalStdDev = stats.stdDev;
     
-    const histogramData = createHistogramData(globalOffsets, 60, calculateRobustAxisRange(globalOffsets));
+    const showOutOfRange = isChartShowOutOfRange('distribution');
+    const histogramData = createHistogramData(globalOffsets, 60, showOutOfRange ? null : calculateRobustAxisRange(globalOffsets));
     // An import whose offsets are all non-numeric yields no bins; the plot is
     // empty in that case, so fall back to a placeholder axis.
     const hasBins = histogramData.length > 0;
@@ -69,6 +109,14 @@ function renderDistributionChart() {
             <div class="label">${t('kurtosis')}</div>
             <div class="value" id="kurtosisValue">-</div>
         </div>
+        <div class="stat-tile">
+            <div class="label">${t('fwhm')}</div>
+            <div class="value" id="fwhmValue">-</div>
+        </div>
+        <div class="stat-tile">
+            <div class="label">${t('shapiroWilk')}</div>
+            <div class="value" id="shapiroValue">-</div>
+        </div>
     `;
     
     const validOffsets = globalOffsets.map(item => item[0]).filter(val => !isNaN(val));
@@ -79,8 +127,21 @@ function renderDistributionChart() {
         const skewness = validOffsets.reduce((sum, val) => sum + Math.pow((val - mean) / globalStdDev, 3), 0) / n;
         document.getElementById('skewnessValue').textContent = skewness.toFixed(3);
         
-        const kurtosis = validOffsets.reduce((sum, val) => sum + Math.pow((val - mean) / globalStdDev, 4), 0) / n - 3;
+        // Raw (not excess) kurtosis, so the guide's 3.2 threshold applies directly.
+        const kurtosis = validOffsets.reduce((sum, val) => sum + Math.pow((val - mean) / globalStdDev, 4), 0) / n;
         document.getElementById('kurtosisValue').textContent = kurtosis.toFixed(3);
+
+        const fwhm = computeHistogramFwhm(histogramData);
+        if (fwhm !== null) {
+            document.getElementById('fwhmValue').textContent = fwhm.toFixed(2) + unit;
+        }
+
+        if (typeof computeShapiroWilk === 'function') {
+            const shapiro = computeShapiroWilk(validOffsets);
+            if (shapiro && shapiro.p !== null) {
+                document.getElementById('shapiroValue').textContent = shapiro.p.toFixed(3);
+            }
+        }
     }
     
     if (distributionChart) {
@@ -234,7 +295,8 @@ function renderDeltaChart() {
     const unit = getUnit();
     const deltas = buildDeltas(records);
     const stats = computeDeltaStats(deltas);
-    const histogramData = binValues(deltas, 60, calculateRobustValueRange(deltas));
+    const showOutOfRange = isChartShowOutOfRange('delta');
+    const histogramData = binValues(deltas, 60, showOutOfRange ? null : calculateRobustValueRange(deltas));
 
     // A selection holding only one tap, or a run whose offsets are all
     // non-numeric, yields no bins. The plot is empty then, so fall back to a
@@ -399,6 +461,7 @@ function renderAcfChart() {
     const results = computeAutocorrelation(records);
     const lag1 = results.length > 0 ? results[0] : null;
     const strongest = getStrongestAcfLag(results);
+    const cycle = typeof computeAcfCycle === 'function' ? computeAcfCycle(results) : null;
 
     const statsEl = document.getElementById('acfStats');
     if (statsEl) {
@@ -419,6 +482,22 @@ function renderAcfChart() {
                 <div class="label">${t('acfStrongest')} r</div>
                 <div class="value">${strongest ? strongest.r.toFixed(3) : '-'}</div>
             </div>
+            <div class="stat-tile">
+                <div class="label">${t('acfCyclePeriod')}</div>
+                <div class="value">${cycle && cycle.period ? 'lag ' + cycle.period : '-'}</div>
+            </div>
+            <div class="stat-tile">
+                <div class="label">${t('acfCyclePeak')}</div>
+                <div class="value">${cycle && cycle.peakR !== null ? cycle.peakR.toFixed(3) : '-'}</div>
+            </div>
+            <div class="stat-tile">
+                <div class="label">${t('acfCycleRegularity')}</div>
+                <div class="value">${cycle ? Math.round(cycle.regularity * 100) + '%' : '-'}</div>
+            </div>
+            <div class="stat-tile">
+                <div class="label">${t('acfCycleNegativeHalf')}</div>
+                <div class="value">${cycle && cycle.negativeHalf ? '✓' : '—'}</div>
+            </div>
         `;
     }
 
@@ -428,7 +507,12 @@ function renderAcfChart() {
     // the picture.
     const noteEl = document.getElementById('acfNote');
     if (noteEl) {
-        noteEl.innerText = results.length > 0 ? t('acfMultiTest') : '';
+        const cycleNote = cycle && cycle.period
+            ? ' · ' + t('acfCycleFound')
+                .replace('{lag}', String(cycle.period))
+                .replace('{reg}', Math.round(cycle.regularity * 100) + '%')
+            : '';
+        noteEl.innerText = results.length > 0 ? t('acfMultiTest') + cycleNote : '';
         noteEl.style.display = results.length > 0 ? 'block' : 'none';
     }
 

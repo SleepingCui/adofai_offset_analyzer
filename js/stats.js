@@ -313,7 +313,9 @@ function getReturnVerdictKey(correlation) {
 // Both axes of the return map share one symmetric limit so that the y = x
 // diagonal is really 45 degrees and the quadrants read straight. The limit is a
 // robust high quantile: one freak hit must not squash the cloud into the centre.
-function getSymmetricOffsetLimit(pairs) {
+// Pass includeOutOfRange to swap that crop for the full extent; the small
+// headroom keeps the extreme marker off the edge of the plot.
+function getSymmetricOffsetLimit(pairs, includeOutOfRange = false) {
     const magnitudes = [];
     pairs.forEach(pair => {
         magnitudes.push(Math.abs(pair.previous), Math.abs(pair.current));
@@ -321,8 +323,11 @@ function getSymmetricOffsetLimit(pairs) {
     if (magnitudes.length === 0) return 1;
 
     magnitudes.sort((a, b) => a - b);
-    const index = Math.min(magnitudes.length - 1, Math.floor(magnitudes.length * 0.98));
-    return Math.max(magnitudes[index], 1);
+    const index = includeOutOfRange
+        ? magnitudes.length - 1
+        : Math.min(magnitudes.length - 1, Math.floor(magnitudes.length * 0.98));
+    const limit = magnitudes[index];
+    return Math.max(includeOutOfRange ? limit * 1.02 : limit, 1);
 }
 
 function getXaccWeight(type) {

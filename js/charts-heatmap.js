@@ -102,13 +102,18 @@ function niceHeatmapStep(raw) {
 
 // Robust half-range: the 98th percentile of |value|, so one freak hit cannot
 // squash the cloud into the centre. Same reasoning as
-// getSymmetricOffsetLimit() for the return map.
-function heatmapAxisLimit(values) {
+// getSymmetricOffsetLimit() for the return map. The includeOutOfRange variant
+// uses the full extent, with a little headroom so the extreme pair lands inside
+// the bin grid rather than exactly on its outer edge.
+function heatmapAxisLimit(values, includeOutOfRange = false) {
     if (values.length === 0) return 1;
 
     const magnitudes = values.map(value => Math.abs(value)).sort((a, b) => a - b);
-    const index = Math.min(magnitudes.length - 1, Math.floor(magnitudes.length * 0.98));
-    return Math.max(magnitudes[index], 1e-6);
+    const index = includeOutOfRange
+        ? magnitudes.length - 1
+        : Math.min(magnitudes.length - 1, Math.floor(magnitudes.length * 0.98));
+    const limit = magnitudes[index];
+    return Math.max(includeOutOfRange ? limit * 1.02 : limit, 1e-6);
 }
 
 // -> [{ x, y }], one point per adjacent tap pair, in the units being plotted.
@@ -171,8 +176,9 @@ function renderHeatmapChart() {
     const selectEl = document.getElementById('heatmapYSelect');
     if (selectEl && selectEl.value !== mode) selectEl.value = mode;
 
-    const xLimit = heatmapAxisLimit(points.map(point => point.x));
-    const yLimit = heatmapAxisLimit(points.map(point => point.y));
+    const showOutOfRange = isChartShowOutOfRange('heatmap');
+    const xLimit = heatmapAxisLimit(points.map(point => point.x), showOutOfRange);
+    const yLimit = heatmapAxisLimit(points.map(point => point.y), showOutOfRange);
 
     // Each axis gets its own bin size so the grid stays close to square. The
     // two axes hold different quantities (offset vs. offset or step), so equal
