@@ -405,6 +405,10 @@ function renderHistorySidebar() {
             .replace('{count}', String(copies.length))
             .replace('{size}', formatStorageBytes(bytes));
     }
+
+    if (typeof renderCompareHistoryOptions === 'function') {
+        renderCompareHistoryOptions();
+    }
 }
 
 function initializeHistoryUi() {

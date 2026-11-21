@@ -1469,6 +1469,52 @@ white-space: nowrap;
 max-width: 60%;
 }
 
+.forensic-compare-history {
+display: flex;
+align-items: center;
+gap: 8px;
+min-width: 0;
+}
+
+.forensic-compare-history label {
+font-size: 0.78rem;
+color: var(--text-muted);
+white-space: nowrap;
+}
+
+.forensic-compare-select {
+min-width: 180px;
+max-width: 340px;
+padding: 6px 10px;
+border: 1px solid var(--card-border);
+border-radius: var(--radius-sm);
+background-color: var(--control-bg);
+color: var(--text-strong);
+font-size: 0.8rem;
+cursor: pointer;
+}
+
+.forensic-compare-select:disabled {
+opacity: 0.6;
+cursor: not-allowed;
+}
+
+.forensic-compare-or {
+font-size: 0.78rem;
+color: var(--text-faint);
+}
+
+@media (max-width: 768px) {
+.forensic-compare-history {
+width: 100%;
+flex-wrap: wrap;
+}
+.forensic-compare-select {
+width: 100%;
+max-width: none;
+}
+}
+
 .forensic-history-actions {
 display: flex;
 justify-content: flex-end;

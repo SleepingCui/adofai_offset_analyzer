@@ -524,6 +524,11 @@
         <div class="chart-section" id="sectionCompare" hidden>
             <h3 data-i18n="compareTitle">双回放对比</h3>
             <div class="forensic-compare-controls">
+                <div class="forensic-compare-history">
+                    <label for="forensicCompareHistory" data-i18n="compareFromHistory">从历史记录选择</label>
+                    <select class="forensic-compare-select" id="forensicCompareHistory" disabled></select>
+                </div>
+                <span class="forensic-compare-or" data-i18n="compareOr">或</span>
                 <label class="btn-sm forensic-file-button">
                     <input type="file" id="forensicCompareInput" accept=".json,.tlog,.tlog.gz,.gz,.crpl2">
                     <span data-i18n="comparePick">选择第二份日志</span>

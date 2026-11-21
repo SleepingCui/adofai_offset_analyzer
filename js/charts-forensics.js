@@ -698,8 +698,9 @@ function drawComparisonChart() {
     });
 }
 
-async function loadComparisonFile(file) {
+async function loadComparisonFile(file, options) {
     if (!file) return;
+    const opts = options || {};
     const nameEl = document.getElementById('forensicCompareName');
     if (nameEl) nameEl.textContent = t('compareLoading');
 
@@ -713,29 +714,129 @@ async function loadComparisonFile(file) {
         // Compare the same player slot on both logs; fall back to the first one
         // when the second log has fewer players than the one on screen.
         const comparePlayer = Math.min(Math.max(activePlayer, 0), players.length - 1);
-        forensicCompare = { fileName: file.name, records: players[comparePlayer] || [] };
+        forensicCompare = {
+            fileName: file.name,
+            records: players[comparePlayer] || [],
+            historyId: opts.historyId || null
+        };
         if (nameEl) nameEl.textContent = file.name;
         drawComparisonChart();
     } catch (err) {
         forensicCompare = null;
         if (nameEl) nameEl.textContent = '';
         alert(t('parseFailed') + '\n' + err.message);
-        renderCompareStats(null, '');
+        drawComparisonChart();
+    }
+}
+
+async function loadComparisonHistory(id) {
+    if (!id) return;
+    if (typeof getHistoryEntry !== 'function' || typeof getHistoryFile !== 'function') return;
+
+    const entry = getHistoryEntry(id);
+    if (!entry) {
+        renderCompareHistoryOptions();
+        return;
+    }
+
+    const select = document.getElementById('forensicCompareHistory');
+    const nameEl = document.getElementById('forensicCompareName');
+    if (select) select.disabled = true;
+    if (nameEl) nameEl.textContent = t('compareLoading');
+
+    try {
+        const record = await getHistoryFile(id);
+        if (!record || !record.blob) {
+            if (typeof updateHistoryEntry === 'function') {
+                updateHistoryEntry(id, { fileStored: false, size: 0 });
+            }
+            if (typeof renderHistorySidebar === 'function') renderHistorySidebar();
+            alert(t('historyNoFileHint'));
+            forensicCompare = null;
+            if (nameEl) nameEl.textContent = '';
+            drawComparisonChart();
+            return;
+        }
+        const fileName = record.name || entry.file || 'timingshow.log';
+        const file = new File([record.blob], fileName, {
+            type: record.type || record.blob.type || 'application/octet-stream',
+            lastModified: record.savedAt || Date.now()
+        });
+        await loadComparisonFile(file, { historyId: id });
+    } catch (err) {
+        console.error('Could not load comparison history file:', err);
+        alert(t('historyLoadFailed') + '\n' + err.message);
+        forensicCompare = null;
+        if (nameEl) nameEl.textContent = '';
+        drawComparisonChart();
+    } finally {
+        if (select) select.disabled = false;
+        renderCompareHistoryOptions();
+    }
+}
+
+function renderCompareHistoryOptions() {
+    const select = document.getElementById('forensicCompareHistory');
+    if (!select) return;
+
+    const entries = typeof readHistoryEntries === 'function'
+        ? readHistoryEntries().filter(entry => entry.fileStored && entry.id !== activeHistoryId)
+        : [];
+    select.innerHTML = '';
+
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = entries.length ? t('compareFromHistory') : t('compareHistoryEmpty');
+    select.appendChild(placeholder);
+
+    entries.forEach(entry => {
+        const option = document.createElement('option');
+        option.value = entry.id;
+        const source = typeof historySourceKey === 'function'
+            ? t(historySourceKey(entry.source))
+            : entry.source;
+        const date = new Date(entry.at).toLocaleDateString();
+        option.textContent = '[' + source + '] ' + (entry.file || entry.song || '—') + ' · ' + date;
+        select.appendChild(option);
+    });
+
+    select.disabled = entries.length === 0;
+    const preferred = forensicCompare && forensicCompare.historyId;
+    if (preferred && entries.some(entry => entry.id === preferred)) {
+        select.value = preferred;
+    } else {
+        select.value = '';
     }
 }
 
 function ensureCompareControls() {
     const input = document.getElementById('forensicCompareInput');
-    if (!input || input.dataset.bound === '1') return;
-    input.dataset.bound = '1';
-    input.addEventListener('change', () => {
-        const file = input.files && input.files[0];
-        if (file) loadComparisonFile(file);
-    });
+    if (input && input.dataset.bound !== '1') {
+        input.dataset.bound = '1';
+        input.addEventListener('change', () => {
+            const file = input.files && input.files[0];
+            if (!file) return;
+            const historySelect = document.getElementById('forensicCompareHistory');
+            if (historySelect) historySelect.value = '';
+            loadComparisonFile(file);
+            input.value = '';
+        });
+    }
+
+    const select = document.getElementById('forensicCompareHistory');
+    if (select && select.dataset.bound !== '1') {
+        select.dataset.bound = '1';
+        select.addEventListener('change', () => {
+            if (!select.value) return;
+            if (input) input.value = '';
+            loadComparisonHistory(select.value);
+        });
+    }
 }
 
 function renderCompareChart() {
     ensureCompareControls();
+    renderCompareHistoryOptions();
     const nameEl = document.getElementById('forensicCompareName');
     if (forensicCompare && nameEl) nameEl.textContent = forensicCompare.fileName;
     drawComparisonChart();
@@ -776,4 +877,6 @@ function clearForensicPanels() {
     if (nameEl) nameEl.textContent = '';
     const input = document.getElementById('forensicCompareInput');
     if (input) input.value = '';
+    const historySelect = document.getElementById('forensicCompareHistory');
+    if (historySelect) historySelect.value = '';
 }
