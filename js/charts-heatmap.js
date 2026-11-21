@@ -46,22 +46,40 @@ const HEATMAP_RAMP = [
     [1.00, [226, 58, 50]]
 ];
 
+// Light theme starts at near-white instead of near-black: an empty bin has to
+// read as "nothing here", and the cold end of the dark ramp would paint the
+// whole empty map navy.
+const HEATMAP_RAMP_LIGHT = [
+    [0.00, [247, 250, 252]],
+    [0.18, [198, 219, 239]],
+    [0.36, [158, 202, 225]],
+    [0.54, [107, 174, 214]],
+    [0.70, [253, 208, 116]],
+    [0.84, [253, 141, 60]],
+    [1.00, [215, 48, 39]]
+];
+
+function getHeatmapRamp() {
+    return currentTheme === 'light' ? HEATMAP_RAMP_LIGHT : HEATMAP_RAMP;
+}
+
 function heatmapColor(t) {
     const value = Math.max(0, Math.min(1, t));
+    const ramp = getHeatmapRamp();
 
-    for (let i = 1; i < HEATMAP_RAMP.length; i++) {
-        const stop = HEATMAP_RAMP[i][0];
+    for (let i = 1; i < ramp.length; i++) {
+        const stop = ramp[i][0];
         if (value > stop) continue;
 
-        const previousStop = HEATMAP_RAMP[i - 1][0];
-        const from = HEATMAP_RAMP[i - 1][1];
-        const to = HEATMAP_RAMP[i][1];
+        const previousStop = ramp[i - 1][0];
+        const from = ramp[i - 1][1];
+        const to = ramp[i][1];
         const f = (value - previousStop) / (stop - previousStop || 1);
         const channels = from.map((channel, index) => Math.round(channel + (to[index] - channel) * f));
         return 'rgb(' + channels[0] + ', ' + channels[1] + ', ' + channels[2] + ')';
     }
 
-    const last = HEATMAP_RAMP[HEATMAP_RAMP.length - 1][1];
+    const last = ramp[ramp.length - 1][1];
     return 'rgb(' + last[0] + ', ' + last[1] + ', ' + last[2] + ')';
 }
 
@@ -234,7 +252,7 @@ function renderHeatmapChart() {
 
     const scaleBarEl = document.getElementById('heatmapScaleBar');
     if (scaleBarEl) {
-        scaleBarEl.style.background = 'linear-gradient(to right, ' + HEATMAP_RAMP
+        scaleBarEl.style.background = 'linear-gradient(to right, ' + getHeatmapRamp()
             .map(entry => 'rgb(' + entry[1][0] + ', ' + entry[1][1] + ', ' + entry[1][2] + ') ' + Math.round(entry[0] * 100) + '%')
             .join(', ') + ')';
     }
@@ -268,13 +286,13 @@ function renderHeatmapChart() {
     const annotations = {
         zeroX: {
             type: 'line', xMin: 0, xMax: 0,
-            borderColor: 'rgba(255, 255, 255, 0.4)', borderWidth: 1, borderDash: [5, 4]
+            borderColor: CHART_COLORS.bandLine, borderWidth: 1, borderDash: [5, 4]
         }
     };
     if (mode !== 'absDelta') {
         annotations.zeroY = {
             type: 'line', yMin: 0, yMax: 0,
-            borderColor: 'rgba(255, 255, 255, 0.4)', borderWidth: 1, borderDash: [5, 4]
+            borderColor: CHART_COLORS.bandLine, borderWidth: 1, borderDash: [5, 4]
         };
     }
     if (points.length) {
@@ -284,8 +302,8 @@ function renderHeatmapChart() {
             yValue: meanY,
             radius: 4,
             pointStyle: 'rectRot',
-            backgroundColor: 'rgba(235, 248, 255, 0.95)',
-            borderColor: 'rgba(10, 10, 10, 0.9)',
+            backgroundColor: CHART_COLORS.markerBg,
+            borderColor: CHART_COLORS.markerBorder,
             borderWidth: 1
         };
     }
@@ -302,7 +320,7 @@ function renderHeatmapChart() {
                 label: t('heatmapTitle'),
                 data: cells,
                 backgroundColor: context => (context.raw && context.raw.color) || 'transparent',
-                borderColor: 'rgba(0, 0, 0, 0.55)',
+                borderColor: CHART_COLORS.cellBorder,
                 borderWidth: 1,
                 // Half a pixel of overlap hides rounding seams between
                 // neighbouring cells; the dark border supplies the grid line.
@@ -330,9 +348,9 @@ function renderHeatmapChart() {
                     offset: false,
                     min: xMin,
                     max: xMax,
-                    title: { display: true, text: `${t('offsetX')} (${unit.trim()})`, color: '#aaa' },
-                    grid: { color: '#232323' },
-                    ticks: { color: '#bbb', autoSkip: false, callback: tickFormatX },
+                    title: { display: true, text: `${t('offsetX')} (${unit.trim()})`, color: CHART_COLORS.axisTitle },
+                    grid: { color: CHART_COLORS.gridStrong },
+                    ticks: { color: CHART_COLORS.axisTick, autoSkip: false, callback: tickFormatX },
                     afterBuildTicks: axis => {
                         axis.ticks = heatmapTicks(xMin, xMax, stepX, 9);
                     }
@@ -343,9 +361,9 @@ function renderHeatmapChart() {
                     reverse: false,
                     min: yMin,
                     max: yMax,
-                    title: { display: true, text: `${t(yLabelKey)} (${unit.trim()})`, color: '#aaa' },
-                    grid: { color: '#232323' },
-                    ticks: { color: '#bbb', autoSkip: false, callback: tickFormatY },
+                    title: { display: true, text: `${t(yLabelKey)} (${unit.trim()})`, color: CHART_COLORS.axisTitle },
+                    grid: { color: CHART_COLORS.gridStrong },
+                    ticks: { color: CHART_COLORS.axisTick, autoSkip: false, callback: tickFormatY },
                     afterBuildTicks: axis => {
                         axis.ticks = heatmapTicks(yMin, yMax, stepY, 9);
                     }

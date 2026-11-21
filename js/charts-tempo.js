@@ -267,7 +267,7 @@ function renderBpmChart() {
     const datasets = [{
         label: t('bpmEffective'),
         data: series.effective,
-        borderColor: '#4FC3F7',
+        borderColor: CHART_COLORS.bpmLine,
         borderWidth: 2,
         pointRadius: 0,
         pointHoverRadius: 5,
@@ -281,7 +281,7 @@ function renderBpmChart() {
         datasets.push({
             label: t('bpmRaw'),
             data: series.raw,
-            borderColor: '#A0FF4E',
+            borderColor: CHART_COLORS.seriesGreen,
             borderWidth: 1.5,
             pointRadius: 0,
             pointHoverRadius: 4,
@@ -297,7 +297,7 @@ function renderBpmChart() {
             label: t('speed'),
             data: series.speed,
             yAxisID: 'y1',
-            borderColor: '#ffb74d',
+            borderColor: CHART_COLORS.meanLine,
             borderWidth: 1.5,
             borderDash: [5, 4],
             pointRadius: 0,
@@ -312,7 +312,7 @@ function renderBpmChart() {
             label: t('pitch'),
             data: series.pitch,
             yAxisID: 'y1',
-            borderColor: '#d958ff',
+            borderColor: CHART_COLORS.seriesPurple,
             borderWidth: 1.5,
             borderDash: [5, 4],
             pointRadius: 0,
@@ -325,23 +325,23 @@ function renderBpmChart() {
     const scales = {
         x: {
             type: 'linear',
-            title: { display: true, text: useTimeline ? t('timeX') : t('keyX'), color: '#aaa' },
-            grid: { color: '#252525' },
-            ticks: { color: '#bbb', maxTicksLimit: 12 }
+            title: { display: true, text: useTimeline ? t('timeX') : t('keyX'), color: CHART_COLORS.axisTitle },
+            grid: { color: CHART_COLORS.grid },
+            ticks: { color: CHART_COLORS.axisTick, maxTicksLimit: 12 }
         },
         y: {
-            title: { display: true, text: t('bpm'), color: '#aaa' },
-            grid: { color: '#252525' },
-            ticks: { color: '#bbb' }
+            title: { display: true, text: t('bpm'), color: CHART_COLORS.axisTitle },
+            grid: { color: CHART_COLORS.grid },
+            ticks: { color: CHART_COLORS.axisTick }
         }
     };
 
     if (showSpeed || showPitch) {
         scales.y1 = {
             position: 'right',
-            title: { display: true, text: t('bpmFactor'), color: '#aaa' },
+            title: { display: true, text: t('bpmFactor'), color: CHART_COLORS.axisTitle },
             grid: { drawOnChartArea: false },
-            ticks: { color: '#bbb', callback: value => `${value}×` }
+            ticks: { color: CHART_COLORS.axisTick, callback: value => `${value}×` }
         };
     }
 
@@ -360,7 +360,7 @@ function renderBpmChart() {
             plugins: {
                 legend: {
                     position: 'top',
-                    labels: { color: '#fff', boxWidth: 12, font: { size: 14 }, padding: 15 }
+                    labels: { color: CHART_COLORS.legend, boxWidth: 12, font: { size: 14 }, padding: 15 }
                 },
                 tooltip: {
                     callbacks: {
@@ -478,8 +478,8 @@ function renderFloorChart() {
             datasets: [{
                 label: t('floorSpread'),
                 data: chords.map(chord => ({ x: chord.floorId, y: chord.spread, chord })),
-                backgroundColor: 'rgba(217, 88, 255, 0.75)',
-                borderColor: '#d958ff',
+                backgroundColor: CHART_COLORS.seriesPurpleFill,
+                borderColor: CHART_COLORS.seriesPurple,
                 pointRadius: 3,
                 pointHoverRadius: 6
             }]
@@ -492,14 +492,14 @@ function renderFloorChart() {
             scales: {
                 x: {
                     type: 'linear',
-                    title: { display: true, text: t('floorLabel'), color: '#aaa' },
-                    grid: { color: '#252525' },
-                    ticks: { color: '#bbb', maxTicksLimit: 12 }
+                    title: { display: true, text: t('floorLabel'), color: CHART_COLORS.axisTitle },
+                    grid: { color: CHART_COLORS.grid },
+                    ticks: { color: CHART_COLORS.axisTick, maxTicksLimit: 12 }
                 },
                 y: {
-                    title: { display: true, text: t('floorSpread') + ` (${unit.trim()})`, color: '#aaa' },
-                    grid: { color: '#252525' },
-                    ticks: { color: '#bbb' }
+                    title: { display: true, text: t('floorSpread') + ` (${unit.trim()})`, color: CHART_COLORS.axisTitle },
+                    grid: { color: CHART_COLORS.grid },
+                    ticks: { color: CHART_COLORS.axisTick }
                 }
             },
             plugins: {
@@ -594,17 +594,17 @@ function renderReturnChart() {
                     type: 'linear',
                     min: -limit,
                     max: limit,
-                    title: { display: true, text: `${t('returnX')} (${unit.trim()})`, color: '#aaa' },
-                    grid: { color: '#252525' },
-                    ticks: { color: '#bbb' }
+                    title: { display: true, text: `${t('returnX')} (${unit.trim()})`, color: CHART_COLORS.axisTitle },
+                    grid: { color: CHART_COLORS.grid },
+                    ticks: { color: CHART_COLORS.axisTick }
                 },
                 y: {
                     type: 'linear',
                     min: -limit,
                     max: limit,
-                    title: { display: true, text: t('offsetX') + ` (${unit.trim()})`, color: '#aaa' },
-                    grid: { color: '#252525' },
-                    ticks: { color: '#bbb' }
+                    title: { display: true, text: t('offsetX') + ` (${unit.trim()})`, color: CHART_COLORS.axisTitle },
+                    grid: { color: CHART_COLORS.grid },
+                    ticks: { color: CHART_COLORS.axisTick }
                 }
             },
             plugins: {
@@ -623,7 +623,7 @@ function renderReturnChart() {
                         diagonal: {
                             type: 'line',
                             xMin: -limit, xMax: limit, yMin: -limit, yMax: limit,
-                            borderColor: 'rgba(255, 255, 255, 0.25)',
+                            borderColor: CHART_COLORS.bandZero,
                             borderWidth: 1,
                             borderDash: [6, 6],
                             label: {
@@ -638,13 +638,13 @@ function renderReturnChart() {
                         zeroX: {
                             type: 'line',
                             xMin: 0, xMax: 0, yMin: -limit, yMax: limit,
-                            borderColor: 'rgba(255, 255, 255, 0.25)',
+                            borderColor: CHART_COLORS.bandZero,
                             borderWidth: 1
                         },
                         zeroY: {
                             type: 'line',
                             yMin: 0, yMax: 0, xMin: -limit, xMax: limit,
-                            borderColor: 'rgba(255, 255, 255, 0.25)',
+                            borderColor: CHART_COLORS.bandZero,
                             borderWidth: 1
                         }
                     }

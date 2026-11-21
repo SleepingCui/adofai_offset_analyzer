@@ -11,9 +11,58 @@
     <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-matrix@2.0.1/dist/chartjs-chart-matrix.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
 
+    <script>
+        // Resolve the theme before the first paint; doing it in app.js would flash
+        // the dark palette on a light-mode screen.
+        (function () {
+            var theme = 'dark';
+            try {
+                var stored = localStorage.getItem('adofai-theme');
+                if (stored === 'light' || stored === 'dark') {
+                    theme = stored;
+                } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+                    theme = 'light';
+                }
+            } catch (err) {
+                // Storage blocked: the OS preference cannot be read either.
+            }
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+
+<div class="page-toolbar" id="pageToolbar">
+    <div class="lang-menu" id="langMenu">
+        <button class="icon-btn lang-toggle" id="langToggle" type="button"
+            aria-haspopup="listbox" aria-expanded="false" aria-controls="langMenuPanel"
+            data-i18n-title="languageTitle" title="切换语言" aria-label="切换语言">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                <circle cx="12" cy="12" r="9"></circle>
+                <path d="M3.5 9h17M3.5 15h17M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"></path>
+            </svg>
+            <span id="langToggleLabel">中文</span>
+            <svg class="lang-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                <path d="M6 9l6 6 6-6"></path>
+            </svg>
+        </button>
+        <div class="lang-menu-panel" id="langMenuPanel" role="listbox" aria-labelledby="langToggle" hidden>
+            <button class="lang-option" type="button" role="option" data-lang="zh" aria-selected="true">中文</button>
+            <button class="lang-option" type="button" role="option" data-lang="en" aria-selected="false">English</button>
+            <button class="lang-option" type="button" role="option" data-lang="kr" aria-selected="false">한국어</button>
+        </div>
+    </div>
+    <button class="icon-btn" id="themeToggle" type="button" data-i18n-title="themeToggle" aria-label="切换主题" aria-pressed="false">
+        <svg class="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="4"></circle>
+            <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>
+        </svg>
+        <svg class="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path>
+        </svg>
+    </button>
+</div>
 
 <div class="container">
     <h1 class="page-title">ADOFAI Offset Analyzer</h1>
@@ -25,11 +74,6 @@
             </div>
             <button class="btn btn-reset" id="resetZoom" data-i18n="resetZoom">重置缩放</button>
             <button class="btn btn-clear" id="clearData" data-i18n="clear">清空</button>
-            <select id="langSelect" class="lang-select">
-                <option value="zh">中文</option>
-                <option value="en">English</option>
-                <option value="kr">한국어</option>
-            </select>
         </div>
         <div id="metaInfo">
             <div id="metaSummary" data-i18n="waitingImport">等待导入...</div>
@@ -61,18 +105,21 @@
             <div class="value" id="statMaxCombo">-</div>
         </div>
         <div class="stats-card" id="urCard" style="border-left-color: #d958ff;">
-            <h3 data-i18n="ur">UR (不稳定度)</h3>
+            <h3 data-i18n="ur">UR (Unstable Rate)</h3>
             <div class="value" id="statUR">-</div>
         </div>
         <div class="stats-card" style="border-left-color: #60ff4e;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-                <h3 id="ratioLabel" style="margin: 0;">Ratio</h3>
-                <label style="font-size: 0.75rem; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; gap: 4px;">
-                    <input type="checkbox" id="toggleXPerfectRatio" style="cursor: pointer; accent-color: var(--accent-color);">
-                    <span data-i18n="xperfectRatio">XPerfect Ratio</span>
-                </label>
+            <h3 data-i18n="ratioTitle">比率</h3>
+            <div class="ratio-rows">
+                <div class="ratio-row">
+                    <span class="ratio-name">Perfect</span>
+                    <span class="value" id="statRatio">-</span>
+                </div>
+                <div class="ratio-row">
+                    <span class="ratio-name">XPerfect</span>
+                    <span class="value" id="statXPRatio">-</span>
+                </div>
             </div>
-            <div class="value" id="statRatio">-</div>
         </div>
     </div>
 
@@ -313,10 +360,9 @@
 
         <div class="chart-section" id="sectionPie" hidden>
             <h3 data-i18n="pieTitle">判定分布比例</h3>
-            <div class="chart-wrapper">
-                <div class="chart-canvas-box">
-                    <canvas id="distributionPieChart"></canvas>
-                </div>
+            <div class="chart-wrapper chart-wrapper--judgement">
+                <div class="judgement-strip" id="judgementStrip" role="img"></div>
+                <div class="judgement-legend" id="judgementLegend"></div>
             </div>
         </div>
 

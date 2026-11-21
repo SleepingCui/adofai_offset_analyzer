@@ -17,12 +17,143 @@ function getPreferredLanguage() {
 }
 
 let currentLang = getPreferredLanguage();
+
+// Native names: the language picker should read the same whichever language is
+// currently active, so these are not translated.
+const LANGUAGE_LABELS = { zh: '中文', en: 'English', kr: '한국어' };
 let currentMetaData = null;
 let metaExpanded = false;
 let minOffsetFilter = null;5
 let maxOffsetFilter = null;
 let ignoreOutliers = false;
 let pointSize = 2;
+
+// ---- Theme -------------------------------------------------------------
+// The palette itself lives in style.css. Chart.js paints into a canvas and
+// cannot read custom properties, so the handful of colors it needs are mirrored
+// into CHART_COLORS here and refreshed whenever the theme changes.
+const THEME_STORAGE_KEY = 'adofai-theme';
+
+function readThemePreference() {
+    try {
+        const stored = localStorage.getItem(THEME_STORAGE_KEY);
+        if (stored === 'light' || stored === 'dark') return stored;
+    } catch (err) {
+        // Private mode / blocked storage: fall through to the OS preference.
+    }
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
+        ? 'light'
+        : 'dark';
+}
+
+let currentTheme = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+
+// Dark values double as fallbacks for the first paint, before style.css has been
+// read back, and for any token a browser refuses to resolve.
+const CHART_COLORS = {
+    axisTitle: '#aaa',
+    axisTick: '#bbb',
+    grid: '#252525',
+    gridStrong: '#232323',
+    legend: '#ffffff',
+    zeroLine: 'rgba(255, 255, 255, 0.75)',
+    bandLine: 'rgba(255, 255, 255, 0.35)',
+    bandFill: 'rgba(255, 255, 255, 0.06)',
+    bandZero: 'rgba(255, 255, 255, 0.25)',
+    cellBorder: 'rgba(0, 0, 0, 0.55)',
+    markerBg: 'rgba(235, 248, 255, 0.95)',
+    markerBorder: 'rgba(10, 10, 10, 0.9)',
+    xaccLine: '#4fc3f7',
+    xaccFill: 'rgba(79, 195, 247, 0.15)',
+    bandStroke: 'rgba(79, 195, 247, 0.45)',
+    bandTint: 'rgba(79, 195, 247, 0.14)',
+    meanLine: '#ffb74d',
+    meanLabelBg: 'rgba(230, 124, 11, 0.8)',
+    bpmLine: '#4fc3f7',
+    seriesGreen: '#a0ff4e',
+    seriesPurple: '#d958ff',
+    seriesPurpleFill: 'rgba(217, 88, 255, 0.75)',
+    spectrumGrid: 'rgba(255, 255, 255, 0.06)',
+    spectrumBorder: '#333333',
+    bandRed: 'rgba(242, 102, 77, 0.10)',
+    bandYellow: 'rgba(255, 217, 51, 0.12)',
+    bandGreen: 'rgba(64, 230, 89, 0.14)',
+    bandBlue: 'rgba(77, 204, 255, 0.14)',
+    surface: '#0a0a0a'
+};
+
+const CHART_TOKEN_MAP = {
+    axisTitle: '--chart-axis-title',
+    axisTick: '--chart-axis-tick',
+    grid: '--chart-grid',
+    gridStrong: '--chart-grid-strong',
+    legend: '--chart-legend',
+    zeroLine: '--chart-zero-line',
+    bandLine: '--chart-band-line',
+    bandFill: '--chart-band-fill',
+    bandZero: '--chart-band-zero',
+    cellBorder: '--chart-cell-border',
+    markerBg: '--chart-marker-bg',
+    markerBorder: '--chart-marker-border',
+    xaccLine: '--chart-xacc-line',
+    xaccFill: '--chart-xacc-fill',
+    bandStroke: '--chart-band-stroke',
+    bandTint: '--chart-band-tint',
+    meanLine: '--chart-mean-line',
+    meanLabelBg: '--chart-mean-label-bg',
+    bpmLine: '--chart-bpm-line',
+    seriesGreen: '--chart-series-green',
+    seriesPurple: '--chart-series-purple',
+    seriesPurpleFill: '--chart-series-purple-fill',
+    spectrumGrid: '--chart-spectrum-grid',
+    spectrumBorder: '--chart-spectrum-border',
+    bandRed: '--chart-band-red',
+    bandYellow: '--chart-band-yellow',
+    bandGreen: '--chart-band-green',
+    bandBlue: '--chart-band-blue',
+    surface: '--chart-surface'
+};
+
+function refreshChartColors() {
+    const styles = getComputedStyle(document.documentElement);
+    Object.keys(CHART_TOKEN_MAP).forEach(key => {
+        const value = styles.getPropertyValue(CHART_TOKEN_MAP[key]).trim();
+        if (value) CHART_COLORS[key] = value;
+    });
+}
+
+function refreshThemeToggle(theme) {
+    const toggle = document.getElementById('themeToggle');
+    if (!toggle) return;
+    const isLight = (theme || currentTheme) === 'light';
+    const label = t('themeToggle');
+    toggle.setAttribute('aria-pressed', String(isLight));
+    toggle.title = label;
+    toggle.setAttribute('aria-label', label);
+}
+
+function setTheme(theme, persist) {
+    const next = theme === 'light' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    currentTheme = next;
+    if (persist !== false) {
+        try {
+            localStorage.setItem(THEME_STORAGE_KEY, next);
+        } catch (err) {
+            // Storage blocked: the choice lasts for this page view only.
+        }
+    }
+    refreshThemeToggle(next);
+    refreshChartColors();
+    // Every render function destroys and rebuilds its chart, so a re-render is
+    // all it takes for the canvases to pick up the new palette.
+    if (globalOffsets.length > 0) updateAllCharts();
+}
+
+function toggleTheme() {
+    setTheme(currentTheme === 'light' ? 'dark' : 'light', true);
+}
+
 
 function t(key) {
     return (I18N_STRINGS[currentLang] && I18N_STRINGS[currentLang][key]) || key;
@@ -197,6 +328,15 @@ function setLanguage(lang) {
     if (!I18N_STRINGS[lang]) return;
     currentLang = lang;
 
+    // The toolbar button and its popover options mirror the active language.
+    const langLabel = document.getElementById('langToggleLabel');
+    if (langLabel) {
+        langLabel.innerText = LANGUAGE_LABELS[lang] || lang;
+    }
+    document.querySelectorAll('.lang-option').forEach(option => {
+        option.setAttribute('aria-selected', String(option.dataset.lang === lang));
+    });
+
     document.querySelectorAll('[data-i18n]').forEach(el => {
         const key = el.getAttribute('data-i18n');
         if (I18N_STRINGS[lang][key]) {
@@ -260,6 +400,23 @@ const LEGACY_MARGIN_MAP = {
     13: { label: 'OverPress', color: '#D958FF' }
 };
 const LEGACY_DISPLAY_ORDER = [9, 0, 1, 2, 4, 3, 6, 7, 8, 10, 11, 12, 13];
+
+// Light-theme judgment colors. The dark table is tuned for a black chart
+// surface: Perfect green and Auto white vanish on white, so these keep the same
+// semantic hues at a print-safe darkness.
+const MARGIN_LIGHT_COLORS = {
+    0: '#c62828', 1: '#d84315', 2: '#558b2f', 3: '#2e7d32', 4: '#0277bd',
+    5: '#2e7d32', 6: '#558b2f', 7: '#d84315', 8: '#c62828', 9: '#00838f',
+    10: '#8e24aa', 11: '#8e24aa', 12: '#546e7a', 13: '#8e24aa',
+    14: '#616161', 15: '#8e24aa'
+};
+
+function getMarginColor(type, fallback) {
+    if (currentTheme === 'light' && MARGIN_LIGHT_COLORS[type]) return MARGIN_LIGHT_COLORS[type];
+    const definition = isGame34Log() ? MARGIN_MAP[type] : LEGACY_MARGIN_MAP[type];
+    return (definition && definition.color) || fallback || '#FFFFFF';
+}
+
 let showDynamicAvg = false;
 
 const JD_WEIGHTS = {
@@ -299,7 +456,6 @@ let globalCounts = {};
 let myChart = null;
 let xaccChart = null;
 let distributionChart = null;
-let pieChart = null;
 let comboChart = null;
 let missChart = null;
 let rollingChart = null;
@@ -398,7 +554,7 @@ const CHART_SECTIONS = [
             if (badgeEl) badgeEl.style.display = 'none';
         }
     },
-    { key: 'pie', sectionId: 'sectionPie', titleKey: 'pieTitle', defaultVisible: true, render: () => renderPieChart() },
+    { key: 'pie', sectionId: 'sectionPie', titleKey: 'pieTitle', defaultVisible: true, render: () => renderJudgementStrip() },
     { key: 'xacc', sectionId: 'sectionXacc', titleKey: 'xaccTitle', defaultVisible: true, render: () => renderXaccChart() },
     { key: 'combo', sectionId: 'sectionCombo', titleKey: 'comboTitle', defaultVisible: false, render: () => renderComboChart() }
 ];
@@ -438,11 +594,11 @@ function isGame34Log() {
 
 function getMarginDefinition(type) {
     const definition = isGame34Log() ? MARGIN_MAP[type] : LEGACY_MARGIN_MAP[type];
-    if (!definition) return { label: 'Unknown', color: '#FFFFFF' };
+    if (!definition) return { label: 'Unknown', color: getMarginColor(type, '#FFFFFF') };
     if (isGame34Log() && type === 3) {
-        return { label: 'PerfectMinus', color: definition.color };
+        return { label: 'PerfectMinus', color: getMarginColor(type, definition.color) };
     }
-    return definition;
+    return { label: definition.label, color: getMarginColor(type, definition.color) };
 }
 
 function getDisplayOrder() {
@@ -478,6 +634,19 @@ function isStreakHitCode(type) {
 // the streak length stays readable for readers who cannot separate the hues.
 const COMBO_RAMP = ['#3a6b34', '#408738', '#45a43a', '#4cc23f', '#52e043', '#60ff4e'];
 const COMBO_BREAK_COLOR = '#333';
+
+// Light ramp: a pale tint would disappear on white, so the same ordinal ramp runs
+// the other way -- pale green against white, dark green at the top.
+const COMBO_RAMP_LIGHT = ['#a5d6a7', '#81c784', '#66bb6a', '#4caf50', '#43a047', '#2e7d32'];
+
+function getComboRamp() {
+    return currentTheme === 'light' ? COMBO_RAMP_LIGHT : COMBO_RAMP;
+}
+
+function getComboBreakColor() {
+    return currentTheme === 'light' ? '#d0d7de' : COMBO_BREAK_COLOR;
+}
+
 
 // -> [{ startIndex, endIndex, length }], one entry per unbroken run of hits
 // that keep the streak alive.

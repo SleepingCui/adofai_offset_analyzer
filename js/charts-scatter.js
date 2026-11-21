@@ -176,12 +176,12 @@ function buildJudgeBandAnnotations(records, useHitAxis, dynamicBands) {
 
         // Early/Late outermost, then E/L Perfect, Perfect and finally XPerfect:
         // later annotations paint on top of earlier ones.
-        addBand('bandEarlyLateEarly' + suffix, fromX, toX, bpm, -bands.pass, -bands.elPerfect, 'rgba(242, 102, 77, 0.10)');
-        addBand('bandEarlyLateLate' + suffix, fromX, toX, bpm, bands.elPerfect, bands.pass, 'rgba(242, 102, 77, 0.10)');
-        addBand('bandElPerfectEarly' + suffix, fromX, toX, bpm, -bands.elPerfect, -bands.perfect, 'rgba(255, 217, 51, 0.12)');
-        addBand('bandElPerfectLate' + suffix, fromX, toX, bpm, bands.perfect, bands.elPerfect, 'rgba(255, 217, 51, 0.12)');
-        addBand('bandPerfect' + suffix, fromX, toX, bpm, -bands.perfect, bands.perfect, 'rgba(64, 230, 89, 0.14)');
-        addBand('bandXPerfect' + suffix, fromX, toX, bpm, -bands.xp, bands.xp, 'rgba(77, 204, 255, 0.14)');
+        addBand('bandEarlyLateEarly' + suffix, fromX, toX, bpm, -bands.pass, -bands.elPerfect, CHART_COLORS.bandRed);
+        addBand('bandEarlyLateLate' + suffix, fromX, toX, bpm, bands.elPerfect, bands.pass, CHART_COLORS.bandRed);
+        addBand('bandElPerfectEarly' + suffix, fromX, toX, bpm, -bands.elPerfect, -bands.perfect, CHART_COLORS.bandYellow);
+        addBand('bandElPerfectLate' + suffix, fromX, toX, bpm, bands.perfect, bands.elPerfect, CHART_COLORS.bandYellow);
+        addBand('bandPerfect' + suffix, fromX, toX, bpm, -bands.perfect, bands.perfect, CHART_COLORS.bandGreen);
+        addBand('bandXPerfect' + suffix, fromX, toX, bpm, -bands.xp, bands.xp, CHART_COLORS.bandBlue);
     });
 
     return annotations;
@@ -333,7 +333,7 @@ function renderScatterChart() {
             label: 'Avg',
             type: 'line',
             data: avgLineData,
-            borderColor: '#ffb74d',
+            borderColor: CHART_COLORS.meanLine,
             borderWidth: 2,
             pointRadius: 0,
             fill: false,
@@ -348,7 +348,7 @@ function renderScatterChart() {
         type: 'line',
         yMin: 0,
         yMax: 0,
-        borderColor: 'rgba(255, 255, 255, 0.75)',
+        borderColor: CHART_COLORS.zeroLine,
         borderWidth: 1.5,
         label: {
             display: true,
@@ -363,14 +363,14 @@ function renderScatterChart() {
         type: 'line',
         yMin: globalAvg,
         yMax: globalAvg,
-        borderColor: '#ffb74d',
+        borderColor: CHART_COLORS.meanLine,
         borderWidth: 2,
         borderDash: [5, 5],
         label: {
             display: true,
             content: `Avg: ${globalAvg >= 0 ? '+' : ''}${globalAvg.toFixed(2)}${unit}`,
             position: 'end',
-            backgroundColor: 'rgba(230, 124, 11, 0.8)',
+            backgroundColor: CHART_COLORS.meanLabelBg,
             color: '#fff',
             font: { size: 10, weight: 'bold' }
         }
@@ -398,20 +398,20 @@ function renderScatterChart() {
             },
             scales: {
                 x: {
-                    title: { display: true, text: useTimeline ? t('timeX') : t('keyX'), color: '#aaa' },
-                    grid: { color: '#252525' },
-                    ticks: { color: '#bbb' }
+                    title: { display: true, text: useTimeline ? t('timeX') : t('keyX'), color: CHART_COLORS.axisTitle },
+                    grid: { color: CHART_COLORS.grid },
+                    ticks: { color: CHART_COLORS.axisTick }
                 },
                 y: {
-                    title: { display: true, text: t('offsetX') + ` (${unit.trim()})`, color: '#aaa' },
-                    grid: { color: '#252525' },
-                    ticks: { color: '#bbb' }
+                    title: { display: true, text: t('offsetX') + ` (${unit.trim()})`, color: CHART_COLORS.axisTitle },
+                    grid: { color: CHART_COLORS.grid },
+                    ticks: { color: CHART_COLORS.axisTick }
                 }
             },
             plugins: {
                 legend: {
                     position: 'top',
-                    labels: { color: '#fff', boxWidth: 12, font: { size: 14 }, padding: 15 }
+                    labels: { color: CHART_COLORS.legend, boxWidth: 12, font: { size: 14 }, padding: 15 }
                 },
                 tooltip: {
                     enabled: false,

@@ -55,19 +55,19 @@ function renderDistributionChart() {
     distStatsContainer.innerHTML = `
         <div class="stat-tile">
             <div class="label">${t('mean')}</div>
-            <div class="value" style="color: #ffffff;">${globalAvg.toFixed(2)}${unit}</div>
+            <div class="value">${globalAvg.toFixed(2)}${unit}</div>
         </div>
         <div class="stat-tile">
             <div class="label">${t('stdDev')}</div>
-            <div class="value" style="color: #ffffff;">${globalStdDev.toFixed(2)}${unit}</div>
+            <div class="value">${globalStdDev.toFixed(2)}${unit}</div>
         </div>
         <div class="stat-tile">
             <div class="label">${t('skewness')}</div>
-            <div class="value" style="color: #ffffff;" id="skewnessValue">-</div>
+            <div class="value" id="skewnessValue">-</div>
         </div>
         <div class="stat-tile">
             <div class="label">${t('kurtosis')}</div>
-            <div class="value" style="color: #ffffff;" id="kurtosisValue">-</div>
+            <div class="value" id="kurtosisValue">-</div>
         </div>
     `;
     
@@ -94,14 +94,14 @@ function renderDistributionChart() {
             type: 'line',
             xMin: globalAvg,
             xMax: globalAvg,
-            borderColor: '#ffb74d',
+            borderColor: CHART_COLORS.meanLine,
             borderWidth: 2,
             borderDash: [5, 5],
             label: {
                 display: true,
                 content: `μ = ${globalAvg.toFixed(2)}${unit}`,
                 position: 'start',
-                backgroundColor: 'rgba(230, 124, 11, 0.8)',
+                backgroundColor: CHART_COLORS.meanLabelBg,
                 color: '#fff',
                 font: { size: 10, weight: 'bold' },
                 yAdjust: -10
@@ -165,7 +165,7 @@ function renderDistributionChart() {
                     label: t('normalFit'),
                     data: normalCurveData,
                     type: 'line',
-                    borderColor: '#ffb74d',
+                    borderColor: CHART_COLORS.meanLine,
                     borderWidth: 2.5,
                     pointRadius: 0,
                     fill: false,
@@ -186,25 +186,25 @@ function renderDistributionChart() {
                     type: 'linear',
                     min: xMin,
                     max: xMax,
-                    title: { display: true, text: t('offsetX') + ` (${unit.trim()})`, color: '#aaa' },
-                    grid: { color: '#252525' },
+                    title: { display: true, text: t('offsetX') + ` (${unit.trim()})`, color: CHART_COLORS.axisTitle },
+                    grid: { color: CHART_COLORS.grid },
                     ticks: { 
-                        color: '#bbb',
+                        color: CHART_COLORS.axisTick,
                         maxTicksLimit: 10,
                         callback: function(value) { return value.toFixed(1); }
                     }
                 },
                 y: {
-                    title: { display: true, text: t('frequency'), color: '#aaa' },
-                    grid: { color: '#252525' },
-                    ticks: { color: '#bbb' },
+                    title: { display: true, text: t('frequency'), color: CHART_COLORS.axisTitle },
+                    grid: { color: CHART_COLORS.grid },
+                    ticks: { color: CHART_COLORS.axisTick },
                     beginAtZero: true
                 }
             },
             plugins: {
                 legend: {
                     position: 'top',
-                    labels: { color: '#fff', boxWidth: 12, font: { size: 14 }, padding: 15 }
+                    labels: { color: CHART_COLORS.legend, boxWidth: 12, font: { size: 14 }, padding: 15 }
                 },
                 tooltip: {
                     callbacks: {
@@ -252,19 +252,19 @@ function renderDeltaChart() {
             </div>
             <div class="stat-tile">
                 <div class="label">${t('deltaMeanAbs')}</div>
-                <div class="value" style="color: #ffffff;">${stats ? stats.meanAbs.toFixed(2) + unit : '-'}</div>
+                <div class="value">${stats ? stats.meanAbs.toFixed(2) + unit : '-'}</div>
             </div>
             <div class="stat-tile">
                 <div class="label">${t('deltaMedianAbs')}</div>
-                <div class="value" style="color: #ffffff;">${stats ? stats.medianAbs.toFixed(2) + unit : '-'}</div>
+                <div class="value">${stats ? stats.medianAbs.toFixed(2) + unit : '-'}</div>
             </div>
             <div class="stat-tile">
                 <div class="label">${t('deltaMean')}</div>
-                <div class="value" style="color: #ffffff;">${stats ? (stats.mean >= 0 ? '+' : '') + stats.mean.toFixed(2) + unit : '-'}</div>
+                <div class="value">${stats ? (stats.mean >= 0 ? '+' : '') + stats.mean.toFixed(2) + unit : '-'}</div>
             </div>
             <div class="stat-tile">
                 <div class="label">${t('deltaStdDev')}</div>
-                <div class="value" style="color: #ffffff;">${stats ? stats.stdDev.toFixed(2) + unit : '-'}</div>
+                <div class="value">${stats ? stats.stdDev.toFixed(2) + unit : '-'}</div>
             </div>
         `;
     }
@@ -298,7 +298,7 @@ function renderDeltaChart() {
         zeroLine: {
             type: 'line',
             xMin: 0, xMax: 0,
-            borderColor: 'rgba(255, 255, 255, 0.75)',
+            borderColor: CHART_COLORS.zeroLine,
             borderWidth: 1.5,
             label: {
                 display: true,
@@ -315,14 +315,14 @@ function renderDeltaChart() {
         annotationsConfig.meanLine = {
             type: 'line',
             xMin: stats.mean, xMax: stats.mean,
-            borderColor: '#ffb74d',
+            borderColor: CHART_COLORS.meanLine,
             borderWidth: 2,
             borderDash: [5, 5],
             label: {
                 display: true,
                 content: `μΔ = ${stats.mean >= 0 ? '+' : ''}${stats.mean.toFixed(2)}${unit}`,
                 position: 'end',
-                backgroundColor: 'rgba(230, 124, 11, 0.8)',
+                backgroundColor: CHART_COLORS.meanLabelBg,
                 color: '#fff',
                 font: { size: 10, weight: 'bold' },
                 yAdjust: -10
@@ -358,18 +358,18 @@ function renderDeltaChart() {
                     type: 'linear',
                     min: xMin,
                     max: xMax,
-                    title: { display: true, text: t('deltaX') + ` (${unit.trim()})`, color: '#aaa' },
-                    grid: { color: '#252525' },
+                    title: { display: true, text: t('deltaX') + ` (${unit.trim()})`, color: CHART_COLORS.axisTitle },
+                    grid: { color: CHART_COLORS.grid },
                     ticks: {
-                        color: '#bbb',
+                        color: CHART_COLORS.axisTick,
                         maxTicksLimit: 10,
                         callback: function(value) { return value.toFixed(1); }
                     }
                 },
                 y: {
-                    title: { display: true, text: t('frequency'), color: '#aaa' },
-                    grid: { color: '#252525' },
-                    ticks: { color: '#bbb' },
+                    title: { display: true, text: t('frequency'), color: CHART_COLORS.axisTitle },
+                    grid: { color: CHART_COLORS.grid },
+                    ticks: { color: CHART_COLORS.axisTick },
                     beginAtZero: true
                 }
             },
@@ -409,15 +409,15 @@ function renderAcfChart() {
             </div>
             <div class="stat-tile">
                 <div class="label">${t('acfLag1')}</div>
-                <div class="value" style="color: #ffffff;">${lag1 && lag1.r !== null ? lag1.r.toFixed(3) : '-'}</div>
+                <div class="value">${lag1 && lag1.r !== null ? lag1.r.toFixed(3) : '-'}</div>
             </div>
             <div class="stat-tile">
                 <div class="label">${t('acfStrongest')}</div>
-                <div class="value" style="color: #ffffff;">${strongest ? `lag ${strongest.lag}` : '-'}</div>
+                <div class="value">${strongest ? `lag ${strongest.lag}` : '-'}</div>
             </div>
             <div class="stat-tile">
                 <div class="label">${t('acfStrongest')} r</div>
-                <div class="value" style="color: #ffffff;">${strongest ? strongest.r.toFixed(3) : '-'}</div>
+                <div class="value">${strongest ? strongest.r.toFixed(3) : '-'}</div>
             </div>
         `;
     }
@@ -470,7 +470,7 @@ function renderAcfChart() {
                     label: t('acfBand'),
                     data: results.map(entry => bandHalfWidth(entry)),
                     type: 'line',
-                    borderColor: 'rgba(255, 255, 255, 0.35)',
+                    borderColor: CHART_COLORS.bandLine,
                     borderWidth: 1,
                     borderDash: [4, 4],
                     pointRadius: 0,
@@ -488,12 +488,12 @@ function renderAcfChart() {
                         return halfWidth === null ? null : -halfWidth;
                     }),
                     type: 'line',
-                    borderColor: 'rgba(255, 255, 255, 0.35)',
+                    borderColor: CHART_COLORS.bandLine,
                     borderWidth: 1,
                     borderDash: [4, 4],
                     pointRadius: 0,
                     fill: { target: 1 },
-                    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                    backgroundColor: CHART_COLORS.bandFill,
                     order: 1
                 }
             ]
@@ -507,10 +507,10 @@ function renderAcfChart() {
             },
             scales: {
                 x: {
-                    title: { display: true, text: t('acfX'), color: '#aaa' },
-                    grid: { color: '#252525' },
+                    title: { display: true, text: t('acfX'), color: CHART_COLORS.axisTitle },
+                    grid: { color: CHART_COLORS.grid },
                     ticks: {
-                        color: '#bbb',
+                        color: CHART_COLORS.axisTick,
                         // The labels are already the lag numbers; this only thins
                         // them out when 50 ticks would collide.
                         maxTicksLimit: 12
@@ -519,9 +519,9 @@ function renderAcfChart() {
                 y: {
                     min: -span,
                     max: span,
-                    title: { display: true, text: t('returnCorr'), color: '#aaa' },
-                    grid: { color: '#252525' },
-                    ticks: { color: '#bbb', callback: function(value) { return value.toFixed(2); } }
+                    title: { display: true, text: t('returnCorr'), color: CHART_COLORS.axisTitle },
+                    grid: { color: CHART_COLORS.grid },
+                    ticks: { color: CHART_COLORS.axisTick, callback: function(value) { return value.toFixed(2); } }
                 }
             },
             plugins: {
@@ -564,7 +564,7 @@ function renderAcfChart() {
                         zeroR: {
                             type: 'line',
                             yMin: 0, yMax: 0,
-                            borderColor: 'rgba(255, 255, 255, 0.25)',
+                            borderColor: CHART_COLORS.bandZero,
                             borderWidth: 1
                         }
                     }

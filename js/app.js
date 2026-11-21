@@ -114,6 +114,10 @@ function clearData() {
     if (comboStatsEl) comboStatsEl.innerHTML = '';
     const comboLegendEl = document.getElementById('comboLegend');
     if (comboLegendEl) comboLegendEl.innerHTML = '';
+    const judgementStripEl = document.getElementById('judgementStrip');
+    if (judgementStripEl) judgementStripEl.innerHTML = '';
+    const judgementLegendEl = document.getElementById('judgementLegend');
+    if (judgementLegendEl) judgementLegendEl.innerHTML = '';
     const rollingStatsEl = document.getElementById('rollingStats');
     if (rollingStatsEl) rollingStatsEl.innerHTML = '';
     const bpmStatsEl = document.getElementById('bpmStats');
@@ -127,6 +131,7 @@ function clearData() {
     document.getElementById('jsonFile').value = '';
     document.getElementById('statUR').innerText = '-';
     document.getElementById('statRatio').innerText = '-';
+    document.getElementById('statXPRatio').innerText = '-';
 
     updateMetaInfo();
 
@@ -135,7 +140,6 @@ function clearData() {
     if (myChart) { myChart.destroy(); myChart = null; }
     if (xaccChart) { xaccChart.destroy(); xaccChart = null; }
     if (distributionChart) { distributionChart.destroy(); distributionChart = null; }
-    if (pieChart) { pieChart.destroy(); pieChart = null; }
     if (comboChart) { comboChart.destroy(); comboChart = null; }
     if (rollingChart) { rollingChart.destroy(); rollingChart = null; }
     if (bpmChart) { bpmChart.destroy(); bpmChart = null; }
@@ -484,16 +488,53 @@ document.getElementById('jsonFile').addEventListener('change', function(e) {
     LoadFile(e.target.files[0]);
 });
 
-document.getElementById('langSelect').addEventListener('change', function(e) {
-    setLanguage(e.target.value);
-});
+// Language is a toolbar button with a small popover, so it needs the same
+// outside-click / Escape handling as the other menus on the page.
+const langMenu = document.getElementById('langMenu');
+const langToggle = document.getElementById('langToggle');
+const langMenuPanel = document.getElementById('langMenuPanel');
+
+function setLanguageMenuOpen(open) {
+    if (!langToggle || !langMenuPanel) return;
+    langMenuPanel.hidden = !open;
+    langToggle.setAttribute('aria-expanded', String(open));
+}
+
+if (langToggle && langMenuPanel) {
+    langToggle.addEventListener('click', function() {
+        setLanguageMenuOpen(langMenuPanel.hidden);
+    });
+
+    langMenuPanel.addEventListener('click', function(e) {
+        const option = e.target.closest('.lang-option');
+        if (!option) return;
+        setLanguage(option.dataset.lang);
+        setLanguageMenuOpen(false);
+        langToggle.focus();
+    });
+
+    document.addEventListener('click', function(e) {
+        if (!langMenuPanel.hidden && !langMenu.contains(e.target)) {
+            setLanguageMenuOpen(false);
+        }
+    });
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && !langMenuPanel.hidden) {
+            setLanguageMenuOpen(false);
+            langToggle.focus();
+        }
+    });
+}
 
 document.getElementById('unitSelect')?.addEventListener('change', function(e) {
     setDisplayUnit(e.target.value);
 });
 
-document.getElementById('toggleXPerfectRatio').addEventListener('change', () => {
-    updateRatioDisplay();
+// Theme is resolved by an inline <head> script before first paint; this only
+// wires the toggle and re-syncs the canvas palette with style.css.
+document.getElementById('themeToggle')?.addEventListener('click', function() {
+    toggleTheme();
 });
 
 ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
@@ -535,10 +576,6 @@ async function loadSourceFromUrl() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    const langSelect = document.getElementById('langSelect');
-    if (langSelect) {
-        langSelect.value = currentLang;
-    }
     const metaToggle = document.getElementById('metaToggle');
     if (metaToggle) {
         metaToggle.addEventListener('click', () => {
@@ -546,6 +583,7 @@ document.addEventListener('DOMContentLoaded', () => {
             updateMetaInfo();
         });
     }
+    setTheme(currentTheme, false);
     setLanguage(currentLang);
     updatePageState();
     loadSourceFromUrl();

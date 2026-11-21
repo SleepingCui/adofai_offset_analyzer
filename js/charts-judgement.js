@@ -1,5 +1,5 @@
-// charts-judgement.js -- the stat cards, XACC, the judgment pie and the combo
-// strip.
+// charts-judgement.js -- the stat cards, XACC, the judgment distribution strip and
+// the combo strip.
 
 function calculateStaticStats() {
     const totalHits = globalOffsets.length;
@@ -61,35 +61,39 @@ function calculateStaticStats() {
     document.getElementById('xaccValue').innerText = `XACC: ${(xacc * 100).toFixed(2)}%`;
 }
 
+// "Hits of interest" vs everything else. Auto hits count towards both ratios
+// because they are judged as Perfect by the game.
+function formatRatio(numerator, total) {
+    if (numerator === 0) return '0:1';
+    const denominator = total - numerator;
+    if (denominator === 0) return '∞:1';
+    const value = numerator / denominator;
+    return `${Number.isInteger(value) ? value : value.toFixed(2)}:1`;
+}
+
+// Both ratios are always on screen: P ratio (Perfect through XPerfect) and
+// XPerfect ratio (XPerfect only). They share the same denominator, so the two
+// cards answer "how often perfect" and "how often flawless" side by side.
 function updateRatioDisplay() {
+    const ratioEl = document.getElementById('statRatio');
+    const xpRatioEl = document.getElementById('statXPRatio');
+
     if (globalOffsets.length === 0) {
-        document.getElementById('statRatio').innerText = '-';
+        if (ratioEl) ratioEl.innerText = '-';
+        if (xpRatioEl) xpRatioEl.innerText = '-';
         return;
     }
-
-    const showXPerf = document.getElementById('toggleXPerfectRatio').checked;
 
     const perfectCount = (globalCounts[3] || 0) + (globalCounts[5] || 0);
     const xPerfectCount = globalCounts[4] || 0;
     const autoCount = globalCounts[12] || 0;
+    const total = globalOffsets.length;
 
-    let numerator = 0; 
-    
-    if (showXPerf) {
-        numerator = xPerfectCount + autoCount;
-    } else {
-        numerator = perfectCount + xPerfectCount + autoCount;
+    if (ratioEl) {
+        ratioEl.innerText = formatRatio(perfectCount + xPerfectCount + autoCount, total);
     }
-    const denominator = globalOffsets.length - numerator;
-
-    if (numerator === 0) {
-        document.getElementById('statRatio').innerText = '0:1';
-    } else if (denominator === 0) {
-        document.getElementById('statRatio').innerText = '∞:1';
-    } else {
-        const ratioVal = numerator / denominator;
-        const formattedVal = Number.isInteger(ratioVal) ? ratioVal.toString() : ratioVal.toFixed(2);
-        document.getElementById('statRatio').innerText = `${formattedVal}:1`;
+    if (xpRatioEl) {
+        xpRatioEl.innerText = formatRatio(xPerfectCount + autoCount, total);
     }
 }
 
@@ -141,12 +145,12 @@ function renderXaccChart() {
             datasets: [{
                 label: 'XACC (%)',
                 data: xaccData,
-                borderColor: '#4FC3F7',
+                borderColor: CHART_COLORS.xaccLine,
                 borderWidth: 2,
                 pointRadius: 0,
                 pointHoverRadius: 5,
                 fill: true,
-                backgroundColor: 'rgba(79, 195, 247, 0.15)'
+                backgroundColor: CHART_COLORS.xaccFill
             }]
         },
         options: {
@@ -156,7 +160,7 @@ function renderXaccChart() {
             plugins: {
                 legend: {
                     position: 'top',
-                    labels: { color: '#fff', boxWidth: 12, font: { size: 14 }, padding: 15 }
+                    labels: { color: CHART_COLORS.legend, boxWidth: 12, font: { size: 14 }, padding: 15 }
                 },
                 tooltip: {
                     mode: 'index',
@@ -176,67 +180,80 @@ function renderXaccChart() {
                 y: { 
                     max: 100,
                     ticks: { 
-                        color: '#bbb',
+                        color: CHART_COLORS.axisTick,
                         callback: function(value) {
                             return value.toFixed(2) + '%';
                         }
                     },
-                    grid: { color: '#252525' }
+                    grid: { color: CHART_COLORS.grid }
                 },
                 x: {
-                    title: { display: true, text: useTimeline ? t('timeX') : t('keyX'), color: '#aaa' },
-                    ticks: { color: '#bbb' },
-                    grid: { color: '#252525' }
+                    title: { display: true, text: useTimeline ? t('timeX') : t('keyX'), color: CHART_COLORS.axisTitle },
+                    ticks: { color: CHART_COLORS.axisTick },
+                    grid: { color: CHART_COLORS.grid }
                 }
             }
         }
     });
 }
 
-function renderPieChart() {
-    if (globalOffsets.length === 0) return;
+// One bar instead of a pie: the strip is split in proportion to how often each
+// judgment appeared, and the legend under it carries the exact counts. A bar
+// keeps neighbouring ratios comparable at a glance, which a pie makes hard.
+function renderJudgementStrip() {
+    const stripEl = document.getElementById('judgementStrip');
+    const legendEl = document.getElementById('judgementLegend');
+    if (!stripEl || !legendEl) return;
 
-    const ctx = document.getElementById('distributionPieChart').getContext('2d');
-    if (pieChart) pieChart.destroy();
+    stripEl.innerHTML = '';
+    legendEl.innerHTML = '';
 
-    const rawGroups = {
-        'Too Early': { count: globalCounts[0], color: '#FF0000' },
-        'Very Early/Late': { count: (globalCounts[1] || 0) + (globalCounts[7] || 0), color: '#FF6F4E' },
-        'Early/Late Perfect': { count: (globalCounts[2] || 0) + (globalCounts[6] || 0), color: '#A0FF4E' },
-        'Perfect': { count: (globalCounts[3] || 0) + (globalCounts[5] || 0), color: '#60FF4E' },
-        'XPerfect': { count: globalCounts[4] || 0, color: '#4DCCFF' },
-        'Auto': { count: globalCounts[12] || 0, color: '#FFFFFF' },
-        'Multipress': { count: globalCounts[9] || 0, color: '#00FFED' },
-        'Overload/Miss': { count: (globalCounts[10] || 0) + (globalCounts[11] || 0) + (globalCounts[13] || 0) + (globalCounts[15] || 0), color: '#D958FF' }
-    };
+    const groups = [
+        { label: 'Too Early', count: globalCounts[0] || 0, color: getMarginColor(0, '#FF0000') },
+        { label: 'Very Early/Late', count: (globalCounts[1] || 0) + (globalCounts[7] || 0), color: getMarginColor(1, '#FF6F4E') },
+        { label: 'Early/Late Perfect', count: (globalCounts[2] || 0) + (globalCounts[6] || 0), color: getMarginColor(2, '#A0FF4E') },
+        { label: 'Perfect', count: (globalCounts[3] || 0) + (globalCounts[5] || 0), color: getMarginColor(3, '#60FF4E') },
+        { label: 'XPerfect', count: globalCounts[4] || 0, color: getMarginColor(4, '#4DCCFF') },
+        { label: 'Auto', count: globalCounts[12] || 0, color: getMarginColor(12, '#FFFFFF') },
+        { label: 'Multipress', count: globalCounts[9] || 0, color: getMarginColor(9, '#00FFED') },
+        { label: 'Overload/Miss', count: (globalCounts[10] || 0) + (globalCounts[11] || 0) + (globalCounts[13] || 0) + (globalCounts[15] || 0), color: getMarginColor(10, '#D958FF') }
+    ].filter(group => group.count > 0);
 
-    const groups = {};
-    Object.keys(rawGroups).forEach(key => {
-        if ((key === 'XPerfect' || key === 'Auto') && rawGroups[key].count === 0) return;
-        groups[key] = rawGroups[key];
-    });
+    const total = groups.reduce((sum, group) => sum + group.count, 0);
+    stripEl.setAttribute('aria-label', t('pieTitle'));
+    if (total === 0) return;
 
-    const labels = Object.keys(groups);
-    const dataCounts = labels.map(l => groups[l].count);
-    const backgroundColors = labels.map(l => groups[l].color);
+    groups.forEach(group => {
+        const percentText = (group.count / total * 100).toFixed(1) + '%';
 
-    pieChart = new Chart(ctx, {
-        type: 'pie',
-        data: {
-            labels: labels,
-            datasets: [{
-                data: dataCounts,
-                backgroundColor: backgroundColors
-            }]
-        },
-        options: {
-            animation: false,
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { position: 'bottom', labels: { color: '#fff' } }
-            }
-        }
+        const segment = document.createElement('div');
+        segment.className = 'judgement-segment';
+        segment.style.flexGrow = String(group.count);
+        segment.style.background = group.color;
+        segment.title = group.label + ': ' + percentText + ' (' + group.count.toLocaleString() + ')';
+        stripEl.appendChild(segment);
+
+        const item = document.createElement('span');
+        item.className = 'judgement-legend-item';
+
+        const swatch = document.createElement('span');
+        swatch.className = 'swatch';
+        swatch.style.background = group.color;
+
+        const name = document.createElement('span');
+        name.className = 'legend-name';
+        name.textContent = group.label;
+
+        const percent = document.createElement('span');
+        percent.className = 'legend-pct';
+        percent.textContent = percentText;
+
+        const count = document.createElement('span');
+        count.className = 'legend-count';
+        count.textContent = '(' + group.count.toLocaleString() + ')';
+
+        item.append(swatch, name, percent, count);
+        legendEl.appendChild(item);
     });
 }
 
@@ -245,7 +262,7 @@ function renderPieChart() {
 // step as soon as one long run exists.
 function getComboBin(length, maxLength) {
     if (!(maxLength > 0)) return 0;
-    return Math.min(COMBO_RAMP.length - 1, Math.floor(COMBO_RAMP.length * Math.sqrt(length / maxLength)));
+    return Math.min(getComboRamp().length - 1, Math.floor(getComboRamp().length * Math.sqrt(length / maxLength)));
 }
 
 // The legend is derived from the same mapping instead of hard-coded ranges, so
@@ -321,7 +338,7 @@ function renderComboChart() {
     if (legendEl) {
         const entries = buildComboLegend(maxRun).map(entry => `
             <span class="legend-item">
-                <span class="swatch" style="background-color: ${COMBO_RAMP[entry.bin]};"></span>
+                <span class="swatch" style="background-color: ${getComboRamp()[entry.bin]};"></span>
                 ${entry.start === entry.end ? entry.start : `${entry.start}-${entry.end}`}
             </span>
         `);
@@ -329,7 +346,7 @@ function renderComboChart() {
             <span class="legend-title">${t('comboLength')}</span>
             ${entries.join('')}
             <span class="legend-item legend-break">
-                <span class="swatch" style="background-color: ${COMBO_BREAK_COLOR};"></span>
+                <span class="swatch" style="background-color: ${getComboBreakColor()};"></span>
                 ${t('comboBreak')}
             </span>
         `;
@@ -359,11 +376,11 @@ function renderComboChart() {
                 // One colour per block. Chart.js only reads per-datum colours
                 // from an array here, not from properties on the data objects.
                 backgroundColor: segments.map(segment => segment.isRun
-                    ? COMBO_RAMP[getComboBin(segment.length, maxRun)]
-                    : COMBO_BREAK_COLOR),
+                    ? getComboRamp()[getComboBin(segment.length, maxRun)]
+                    : getComboBreakColor()),
                 // Surface-coloured 2px border: without the seam two adjacent
                 // runs of similar length read as one long band.
-                borderColor: '#0a0a0a',
+                borderColor: CHART_COLORS.surface,
                 borderWidth: 2,
                 barPercentage: 1.0,
                 categoryPercentage: 1.0
@@ -383,9 +400,9 @@ function renderComboChart() {
                     type: 'linear',
                     min: xMin,
                     max: xMax + padding,
-                    title: { display: true, text: useTimeline ? t('timeX') : t('keyX'), color: '#aaa' },
-                    grid: { color: '#252525' },
-                    ticks: { color: '#bbb', maxTicksLimit: 12 }
+                    title: { display: true, text: useTimeline ? t('timeX') : t('keyX'), color: CHART_COLORS.axisTitle },
+                    grid: { color: CHART_COLORS.grid },
+                    ticks: { color: CHART_COLORS.axisTick, maxTicksLimit: 12 }
                 },
                 y: { display: false }
             },

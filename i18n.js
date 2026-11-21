@@ -1,8 +1,8 @@
 const I18N_STRINGS = {
     zh: {
-        importFile: '导入文件', resetZoom: '重置缩放', clear: '清空',
+        importFile: '导入文件', resetZoom: '重置缩放', clear: '清空', themeToggle: '切换主题', languageTitle: '切换语言',
         waitingImport: '等待导入...',
-        totalHits: '总按键数', maxCombo: '最大连击数', ur: 'UR (不稳定度)',
+        totalHits: '总按键数', maxCombo: '最大连击数', ur: 'UR (Unstable Rate)',
         scatterTitle: '偏移量散点图', distTitle: '正态分布图',
         pieTitle: '判定分布比例', xaccTitle: 'XACC变化曲线',
         comboTitle: '连续 Perfect 热力条',
@@ -63,7 +63,7 @@ const I18N_STRINGS = {
         playerLabel: '玩家', playerCount: '玩家数',
         truncatedSuffix: '(已截断)',
         truncatedWarning: '⚠ 文件中途被截断，仅显示已完整写入的记录',
-        xperfectRatio: 'XPerfect Ratio',
+        ratioTitle: '比率',
         rangeFilter: '范围筛选:',
         reset: '重置', useHitAxis: '使用 Hit 作为横轴',
         ignoreOutliers: '忽略离群点',
@@ -78,9 +78,9 @@ const I18N_STRINGS = {
         floorLabel: '地板', angleLabel: '角度', offsetMsLabel: '毫秒偏差'
     },
     en: {
-        importFile: 'Import File', resetZoom: 'Reset Zoom', clear: 'Clear',
+        importFile: 'Import File', resetZoom: 'Reset Zoom', clear: 'Clear', themeToggle: 'Toggle theme', languageTitle: 'Language',
         waitingImport: 'Waiting for import...',
-        totalHits: 'Total Hits', maxCombo: 'Max Combo', ur: 'UR (Instability)',
+        totalHits: 'Total Hits', maxCombo: 'Max Combo', ur: 'UR (Unstable Rate)',
         scatterTitle: 'Offset Scatter Plot', distTitle: 'Normal Distribution',
         pieTitle: 'Judgment Breakdown', xaccTitle: 'XACC Progression',
         comboTitle: 'Consecutive Perfect Strip',
@@ -141,7 +141,7 @@ const I18N_STRINGS = {
         playerLabel: 'Player', playerCount: 'Players',
         truncatedSuffix: '(truncated)',
         truncatedWarning: '⚠ File was cut off mid-write; only fully written records are shown',
-        xperfectRatio: 'XPerfect Ratio',
+        ratioTitle: 'Ratio',
         rangeFilter: 'Range Filter:',
         reset: 'Reset', useHitAxis: 'Use Hit as X-axis',
         ignoreOutliers: 'Ignore Outliers',
@@ -156,9 +156,9 @@ const I18N_STRINGS = {
         floorLabel: 'Floor', angleLabel: 'Angle', offsetMsLabel: 'Offset (ms)'
     },
     kr: {
-        importFile: '파일 가져오기', resetZoom: '줌 초기화', clear: '비우기',
+        importFile: '파일 가져오기', resetZoom: '줌 초기화', clear: '비우기', themeToggle: '테마 전환', languageTitle: '언어',
         waitingImport: '가져오기 대기 중...',
-        totalHits: '총 타건 수', maxCombo: '최대 콤보', ur: 'UR (불안정도)',
+        totalHits: '총 타건 수', maxCombo: '최대 콤보', ur: 'UR (Unstable Rate)',
         scatterTitle: '오프셋 산점도', distTitle: '정규 분포',
         pieTitle: '판정 분포 비율', xaccTitle: 'XACC 변화 곡선',
         comboTitle: '연속 Perfect 히트 스트립',
@@ -219,7 +219,7 @@ const I18N_STRINGS = {
         playerLabel: '플레이어', playerCount: '플레이어 수',
         truncatedSuffix: '(잘림)',
         truncatedWarning: '⚠ 파일이 중간에 잘렸습니다. 완전히 기록된 항목만 표시됩니다',
-        xperfectRatio: 'XPerfect Ratio',
+        ratioTitle: '비율',
         rangeFilter: '범위 필터:',
         reset: '초기화', useHitAxis: 'Hit을 X축으로 사용',
         ignoreOutliers: '이상치 무시',

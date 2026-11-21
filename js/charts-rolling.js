@@ -64,7 +64,7 @@ function renderRollingChart() {
             type: 'line',
             yMin: 0,
             yMax: 0,
-            borderColor: 'rgba(255, 255, 255, 0.75)',
+            borderColor: CHART_COLORS.zeroLine,
             borderWidth: 1.5,
             label: {
                 display: true,
@@ -91,17 +91,17 @@ function renderRollingChart() {
                 {
                     label: t('rollingBand'),
                     data: points.upper,
-                    borderColor: 'rgba(79, 195, 247, 0.45)',
+                    borderColor: CHART_COLORS.bandStroke,
                     borderWidth: 1,
                     pointRadius: 0,
                     // Filled down to the -1 sigma dataset, which is entry 2.
                     fill: { target: 2 },
-                    backgroundColor: 'rgba(79, 195, 247, 0.14)'
+                    backgroundColor: CHART_COLORS.bandTint
                 },
                 {
                     label: t('rollingMean'),
                     data: points.mean,
-                    borderColor: '#ffb74d',
+                    borderColor: CHART_COLORS.meanLine,
                     borderWidth: 2,
                     pointRadius: 0,
                     fill: false
@@ -111,7 +111,7 @@ function renderRollingChart() {
                     // below keeps its empty label out of the legend.
                     label: '',
                     data: points.lower,
-                    borderColor: 'rgba(79, 195, 247, 0.45)',
+                    borderColor: CHART_COLORS.bandStroke,
                     borderWidth: 1,
                     pointRadius: 0,
                     fill: false
@@ -126,21 +126,21 @@ function renderRollingChart() {
             scales: {
                 x: {
                     type: 'linear',
-                    title: { display: true, text: useTimeline ? t('timeX') : t('keyX'), color: '#aaa' },
-                    grid: { color: '#252525' },
-                    ticks: { color: '#bbb', maxTicksLimit: 12 }
+                    title: { display: true, text: useTimeline ? t('timeX') : t('keyX'), color: CHART_COLORS.axisTitle },
+                    grid: { color: CHART_COLORS.grid },
+                    ticks: { color: CHART_COLORS.axisTick, maxTicksLimit: 12 }
                 },
                 y: {
-                    title: { display: true, text: t('offsetX') + ` (${unit.trim()})`, color: '#aaa' },
-                    grid: { color: '#252525' },
-                    ticks: { color: '#bbb' }
+                    title: { display: true, text: t('offsetX') + ` (${unit.trim()})`, color: CHART_COLORS.axisTitle },
+                    grid: { color: CHART_COLORS.grid },
+                    ticks: { color: CHART_COLORS.axisTick }
                 }
             },
             plugins: {
                 legend: {
                     position: 'top',
                     labels: {
-                        color: '#fff', boxWidth: 12, font: { size: 14 }, padding: 15,
+                        color: CHART_COLORS.legend, boxWidth: 12, font: { size: 14 }, padding: 15,
                         filter: item => item.text !== ''
                     }
                 },

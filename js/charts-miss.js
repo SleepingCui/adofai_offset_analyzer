@@ -447,10 +447,10 @@ function renderMissChart() {
                     type: 'linear',
                     min: 0,
                     max: 100,
-                    grid: { color: 'rgba(255, 255, 255, 0.05)', drawTicks: false },
-                    border: { color: '#333' },
+                    grid: { color: CHART_COLORS.spectrumGrid, drawTicks: false },
+                    border: { color: CHART_COLORS.spectrumBorder },
                     ticks: {
-                        color: '#bbb',
+                        color: CHART_COLORS.axisTick,
                         maxTicksLimit: 11,
                         // The scale stays 0-100 so the strip always spans the whole
                         // run; only the labels change with the basis. Time mode
