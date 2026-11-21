@@ -1,5 +1,7 @@
 /* STREAMING_CHUNK:Initializing variables and modern color tokens... */
 :root {
+/* layout */
+--container-width: 1420px;
 /* surfaces */
 --bg-color: #121212;
 --panel-color: #1e1e1e;
@@ -195,7 +197,7 @@ padding-left: calc(var(--rail-width) + 48px);
 
 .container {
 width: 100%;
-max-width: 1680px;
+max-width: var(--container-width, 1420px);
 margin: 0 auto;
 background: var(--panel-color);
 padding: 32px;
@@ -1928,6 +1930,32 @@ width: auto;
 flex: 0 0 auto;
 padding: 6px 10px;
 font-size: 0.8rem;
+}
+.settings-width-control {
+display: flex;
+align-items: center;
+gap: 6px;
+flex: 0 0 auto;
+}
+.settings-width-input {
+width: 84px;
+box-sizing: border-box;
+background: var(--panel-color);
+border: 1px solid var(--card-border);
+color: var(--text-color);
+padding: 6px 8px;
+border-radius: var(--radius-sm);
+font-size: 0.82rem;
+font-variant-numeric: tabular-nums;
+text-align: right;
+outline: none;
+}
+.settings-width-input:focus {
+border-color: var(--accent-color);
+}
+.settings-width-unit {
+font-size: 0.72rem;
+color: var(--text-muted);
 }
 .settings-hint {
 margin: 8px 0 0;

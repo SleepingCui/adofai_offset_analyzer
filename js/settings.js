@@ -7,6 +7,7 @@ const APP_SETTINGS_KEY = 'adofai-settings-v1';
 
 const DEFAULT_APP_SETTINGS = {
     accent: '',
+    containerWidth: 1420,
     rememberCharts: false,
     chartTwoColumns: false,
     autoExpandMeta: false,
@@ -15,6 +16,10 @@ const DEFAULT_APP_SETTINGS = {
     historyLimit: 50,
     railOpen: true
 };
+
+const CONTAINER_WIDTH_DEFAULT = 1420;
+const CONTAINER_WIDTH_MIN = 360;
+const CONTAINER_WIDTH_MAX = 2400;
 
 const ACCENT_PRESETS = [
     { value: '', key: 'settingsAccentDefault' },
@@ -96,6 +101,23 @@ function scheduleChartResize() {
     }, 320);
 }
 
+function normalizeContainerWidth(value) {
+    const raw = String(value == null ? '' : value).trim();
+    if (!raw) return CONTAINER_WIDTH_DEFAULT;
+    const width = Math.round(Number(raw));
+    if (!Number.isFinite(width)) return CONTAINER_WIDTH_DEFAULT;
+    return Math.min(CONTAINER_WIDTH_MAX, Math.max(CONTAINER_WIDTH_MIN, width));
+}
+
+function applyContainerWidth() {
+    const width = normalizeContainerWidth(appSettings.containerWidth);
+    const next = width + 'px';
+    const current = document.documentElement.style.getPropertyValue('--container-width');
+    if (current === next) return false;
+    document.documentElement.style.setProperty('--container-width', next);
+    return true;
+}
+
 function applyChartColumns() {
     const twoColumns = appSettings.chartTwoColumns === true;
     const changed = document.body.classList.contains('charts-two-column') !== twoColumns;
@@ -104,10 +126,11 @@ function applyChartColumns() {
 }
 
 function applyAppSettings() {
+    const widthChanged = applyContainerWidth();
     const columnsChanged = applyChartColumns();
     applyRailVisibility(appSettings.railOpen !== false);
     applyAccent(appSettings.accent);
-    if (columnsChanged) scheduleChartResize();
+    if (widthChanged || columnsChanged) scheduleChartResize();
 }
 
 function hexToRgb(hex) {
@@ -220,6 +243,8 @@ function syncSettingsControls() {
         button.setAttribute('aria-pressed', String(active));
     });
 
+    const containerWidth = document.getElementById('settingsContainerWidth');
+    if (containerWidth) containerWidth.value = String(normalizeContainerWidth(appSettings.containerWidth));
     const remember = document.getElementById('settingsRememberCharts');
     if (remember) remember.checked = !!appSettings.rememberCharts;
     const twoColumns = document.getElementById('settingsChartTwoColumns');
@@ -382,6 +407,11 @@ function initializeSettingsUi() {
 
     document.getElementById('settingsRememberCharts')?.addEventListener('change', event => {
         saveAppSettings({ rememberCharts: event.target.checked });
+    });
+    document.getElementById('settingsContainerWidth')?.addEventListener('change', event => {
+        const width = normalizeContainerWidth(event.target.value);
+        event.target.value = String(width);
+        saveAppSettings({ containerWidth: width });
     });
     document.getElementById('settingsChartTwoColumns')?.addEventListener('change', event => {
         saveAppSettings({ chartTwoColumns: event.target.checked });
